@@ -16,19 +16,25 @@ to its disposition:
 INCLUDE           SWIG MODULE NAME
 svn_auth.h        _core (some symbols)
 svn_base64.h      (1)
+svn_cache_config.h _core
+svn_checksum.h    _core
 svn_client.h      _client
 svn_cmdline.h     (2)
+svn_compat.h      (2)
 svn_config.h      _core (some symbols)
 svn_ctype.h       (1)
 svn_dav.h         (2)
 svn_delta.h       _delta
 svn_diff.h        _diff
+svn_dirent_uri.h  _core
 svn_error.h       (2)
 svn_error_codes.h _core
 svn_fs.h          _fs
 svn_hash.h        (1)
 svn_io.h          _core (only stream functions)
+svn_mergeinfo.h   _core
 svn_md5.h         (1)
+svn_nls.h         _core
 svn_opt.h         _core (some symbols)
 svn_path.h        _core (some symbols, 1)
 svn_pools.h       _core (only pool manipulation)
@@ -46,6 +52,7 @@ svn_types.h       (3)
 svn_utf.h         (1)
 svn_version.h     _core (some symbols)
 svn_wc.h          _wc
+svn_x509          (2)
 svn_xml.h         (1)
 
 apr*.h            (3)
