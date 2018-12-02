@@ -74,16 +74,21 @@
  * %ignore-d, or present as a comment, explicitly documenting that we wrap it.
  */
 
+// svn_io_dirent2_create (need?)
+// svn_io_dirent2_dup (need?)
 %ignore svn_io_check_path;
 %ignore svn_io_check_special_path;
 %ignore svn_io_check_resolved_path;
 /* This is useful for implementing svn_ra_callbacks_t->open_tmp_file */
+// svn_io_open_uniquely_named
+// svn_io_open_unique_file3
 // svn_io_open_unique_file2
 // svn_io_open_unique_file
 %ignore svn_io_create_unique_link;
 %ignore svn_io_read_link;
 %ignore svn_io_temp_dir;
 %ignore svn_io_copy_file;
+// svn_io_copy_perms (ignore?)
 %ignore svn_io_copy_link;
 %ignore svn_io_copy_dir_recursively;
 %ignore svn_io_make_dir_recursively;
@@ -97,12 +102,20 @@
 %ignore svn_io_read_length_line;
 %ignore svn_io_file_affected_time;
 %ignore svn_io_set_file_affected_time;
+// svn_io_sleep_for_timestamps (need?)
 %ignore svn_io_filesizes_different_p;
+// svn_io_filesizes_three_different_p (ignore?)
+// svn_io_file_checksum2 (broken)
 // svn_io_file_checksum
 // svn_io_files_contents_same_p
+// svn_io_files_contents_three_same_p
 %ignore svn_io_file_create;
+// svn_io_file_create_bytes (ignore?)
+// svn_io_file_create_empty (ignore?)
 %ignore svn_io_file_lock;
 %ignore svn_io_file_lock2;
+// svn_io_lock_open_file (ignore?)
+// svn_io_unlock_open_file (ignore?)
 %ignore svn_io_file_flush_to_disk;
 %ignore svn_io_dir_file_copy;
 
@@ -112,9 +125,15 @@
  * care of the details. */
 %ignore svn_stream_create;
 %ignore svn_stream_set_baton;
+// svn_stream_set_read2 (ignore?)
 %ignore svn_stream_set_read;
+// svn_stream_set_skip (ignore?)
 %ignore svn_stream_set_write;
 %ignore svn_stream_set_close;
+// svn_stream_set_mark (ignore?)
+// svn_stream_set_seek (ignore?)
+// svn_stream_set_data_available (ignore?)
+// svn_stream_set_readline (ignore?)
 
 /* The permitted svn_stream and svn_stringbuf functions could possibly
  * be used by a script, in conjunction with other APIs which return or
@@ -122,17 +141,40 @@
  * svn_stream_t wrapping code does not obstruct this usage. */
 // svn_stream_empty
 // svn_stream_disown
+// svn_stream_open_readonly
+// svn_stream_open_writable
+// svn_stream_open_unique
 // svn_stream_from_aprfile2
 // svn_stream_from_aprfile
+// svn_stream_for_stdin2
+// svn_stream_for_stdin
+// svn_stream_for_stderr
 // svn_stream_for_stdout
+// svn_stringbuf_from_stream
 // svn_stream_from_stringbuf
+// svn_stream_from_string
+// svn_stream_buffered
 // svn_stream_compressed
 /* svn_stream_checksummed would require special attention to wrap, because
  * of the read_digest and write_digest parameters. */
+// svn_stream_checksummed2 (broken)
 %ignore svn_stream_checksummed;
+// svn_stream_contents_checksum (broken)
+// svn_stream_read_full
+// svn_stream_supports_partial_read
+// svn_stream_read2
 // svn_stream_read
+// svn_stream_skip
 // svn_stream_write
 // svn_stream_close
+// svn_stream_reset
+// svn_stream_supports_mark
+// svn_stream_supports_reset
+// svn_stream_mark (broken)
+// svn_stream_seek
+// svn_stream_data_available
+// svn_stream_tee
+// svn_stream_puts
 
 /* Scripts can do the printf, then write to a stream.
  * We can't really handle the variadic, so ignore it. */
@@ -140,48 +182,80 @@
 %ignore svn_stream_printf_from_utf8;
 
 // svn_stream_readline
+// svn_stream_copy3
+// svn_stream_copy2
 // svn_stream_copy
+// svn_stream_contents_same2
 // svn_stream_contents_same
+// svn_string_from_stream2
+// svn_string_from_stream
+// svn_stream_lazyopen_create
+// svn_stringbuf_from_file2
 // svn_stringbuf_from_file
 // svn_stringbuf_from_aprfile
 
 #ifndef SWIGPYTHON
 /* These functions are useful in Python, because they allow you to
  * easily delete files which are marked as read-only on Windows. */
+// svn_io_remove_file2 (ignore?)
 %ignore svn_io_remove_file;
+// svn_io_remove_dir2 (ignore?)
 %ignore svn_io_remove_dir;
 #endif
 %ignore svn_io_get_dir_filenames;
+// svn_io_get_dirents3 (ignore?)
 %ignore svn_io_get_dirents2;
 %ignore svn_io_get_dirents;
+// svn_io_stat_dirent2 (broken)(ignore?)
+// svn_io_stat_dirent (broken)(ignore?)
+// svn_io_dir_walk2 (ignore?)
 %ignore svn_io_dir_walk;
 %ignore svn_io_start_cmd;
 %ignore svn_io_wait_for_cmd;
 %ignore svn_io_run_cmd;
+// svn_io_run_diff2 (ignore?)
 %ignore svn_io_run_diff;
+// svn_io_run_diff3_3 (ignore?)
 %ignore svn_io_run_diff3_2;
 %ignore svn_io_run_diff3;
+// svn_io_parse_mimetypes_file
+// svn_io_detect_mimetype2
 // svn_io_detect_mimetype
+// svn_io_is_binary_data
 %ignore svn_io_file_open;
 %ignore svn_io_file_close;
 %ignore svn_io_file_getc;
+// svn_io_file_putc (ignore?)
 %ignore svn_io_file_info_get;
+// svn_io_file_size_get (ignore?)
+// svn_io_file_get_offset (ignore?)
 %ignore svn_io_file_read;
+// svn_io_file_read_full2 (ignore?)
 %ignore svn_io_file_read_full;
 %ignore svn_io_file_seek;
+// svn_io_file_aligned_seek (ignore?)
 %ignore svn_io_file_write;
+// svn_io_file_flush (ignore?)
 %ignore svn_io_file_write_full;
+// svn_io_write_atomic2 (ignore?)
+// svn_io_write_atomic (ignore?)
+// svn_io_write_unique (ignore?)
+// svn_io_file_trunc (ignore?)
 %ignore svn_io_stat;
+// svn_io_file_rename2 (ignore?)
 %ignore svn_io_file_rename;
 %ignore svn_io_file_move;
 %ignore svn_io_dir_make;
 %ignore svn_io_dir_make_hidden;
 %ignore svn_io_dir_make_sgid;
 %ignore svn_io_dir_open;
+// svn_io_dir_close (ignore?)
 %ignore svn_io_dir_remove_nonrecursive;
 %ignore svn_io_dir_read;
+// svn_io_file_name_get (ignore?)
 %ignore svn_io_read_version_file;
 %ignore svn_io_write_version_file;
+// svn_io_file_readline (ignore?)
 
 /* svn_path.h: We cherry-pick certain functions from this file. To aid in this,
  * EVERY function in the file is listed in the order it appears, and is either
@@ -193,6 +267,7 @@
 %ignore svn_path_join_many;
 %ignore svn_path_basename;
 %ignore svn_path_dirname;
+// svn_path_splitext (ignore?)
 %ignore svn_path_component_count;
 %ignore svn_path_add_component;
 %ignore svn_path_remove_component;
@@ -200,6 +275,8 @@
 %ignore svn_path_split;
 // svn_path_is_empty;
 // svn_path_canonicalize;
+// svn_path_is_canonical
+/* For Python, this is provided as pure Python */
 // svn_path_compare_paths;
 // svn_path_get_longest_ancestor;
 %ignore svn_path_get_absolute;
@@ -210,6 +287,7 @@
 %ignore svn_path_compose;
 %ignore svn_path_is_single_path_component;
 %ignore svn_path_is_backpath_present;
+// svn_path_is_dotpath_present (ignore?)
 %ignore svn_path_is_child;
 %ignore svn_path_is_ancestor;
 %ignore svn_path_check_valid;
@@ -217,11 +295,15 @@
 // svn_path_is_uri_safe;
 %ignore svn_path_uri_encode;
 %ignore svn_path_uri_decode;
+// svn_path_url_add_component2 (ignore?)
 %ignore svn_path_url_add_component;
 %ignore svn_path_uri_from_iri;
 %ignore svn_path_uri_autoescape;
 %ignore svn_path_cstring_from_utf8;
 %ignore svn_path_cstring_to_utf8;
+// svn_path_is_repos_relative_url (need?)
+// svn_path_resolve_repos_relative_url (need?)
+// svn_path_illegal_path_escape (need?)
 
 /* svn_dirent_uri.h: SWIG can't digest these functions yet, so ignore them
  * for now. TODO: make them work.
