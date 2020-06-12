@@ -18,7 +18,7 @@ Blanket commit access:
        ghudson   Greg Hudson <ghudson@mit.edu>
           fitz   Brian W. Fitzpatrick <fitz@red-bean.com>
         daniel   Daniel Stenberg <daniel@haxx.se>
-      cmpilato   C. Michael Pilato <cmpilato@collab.net>
+      cmpilato   C. Michael Pilato <cmpilato@apache.org>
         philip   Philip Martin <philip@apache.org>
    jerenkrantz   Justin Erenkrantz <justin@erenkrantz.com>
         rooneg   Garrett Rooney <rooneg@electricjellyfish.net>
@@ -64,6 +64,7 @@ Blanket commit access:
   troycurtisjr   Troy Curtis, Jr <troycurtisjr@gmail.com>
  hartmannathan   Nathan Hartman <hartman.nathan@gmail.com>
       futatuki   Yasuhito Futatsuki <futatuki@yf.bsdclub.org>
+       jun66j5   Jun Omae <jun66j5@gmail.com>
 
 [[END ACTIVE FULL COMMITTERS.  LEAVE THIS LINE HERE; SCRIPTS LOOK FOR IT.]]
 

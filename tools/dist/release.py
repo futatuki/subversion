@@ -241,7 +241,7 @@ def get_branch_path(args):
         try:
             args.branch = 'branches/%d.%d.x' % (args.version.major, args.version.minor)
         except AttributeError:
-            raise RuntimeError("Please specify the release version label or --branch-path")
+            raise RuntimeError("Please specify the branch using the release version label argument (for certain subcommands) or the '--branch' global option")
 
     return args.branch.rstrip('/')  # canonicalize for later comparisons
 
@@ -932,7 +932,7 @@ def roll_tarballs(args):
     # Use the gzip -n flag - this prevents it from storing the
     # original name of the .tar file, and far more importantly, the
     # mtime of the .tar file, in the produced .tar.gz file. This is
-    # important, because it makes the gzip encoding reproducable by
+    # important, because it makes the gzip encoding reproducible by
     # anyone else who has an similar version of gzip, and also uses
     # "gzip -9n". This means that committers who want to GPG-sign both
     # the .tar.gz and the .tar.bz2 can download the .tar.bz2 (which is
@@ -1096,7 +1096,7 @@ def bump_versions_on_branch(args):
                                    universal_newlines=True).strip()
     HEAD = int(HEAD)
     def file_object_for(relpath):
-        fd = tempfile.NamedTemporaryFile()
+        fd = tempfile.NamedTemporaryFile(mode='w+', encoding='UTF-8')
         url = branch_url + '/' + relpath
         fd.url = url
         subprocess.check_call(['svn', 'cat', '%s@%d' % (url, HEAD)],
@@ -1807,7 +1807,7 @@ def main():
 
     # The move-to-dist subcommand
     subparser = subparsers.add_parser('move-to-dist',
-                    help='''Move candiates and signatures from the temporary
+                    help='''Move candidates and signatures from the temporary
                             release dev location to the permanent distribution
                             directory.''')
     subparser.set_defaults(func=move_to_dist)

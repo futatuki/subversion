@@ -1726,7 +1726,7 @@ def verify_non_utf8_paths(sbox):
       # also fix up the 'created path' field
       fp_new.write(b"cpath: /\xE6\n")
     elif line == b"_0.0.t0-0 add-file true true /A\n":
-      # and another occurrance
+      # and another occurrence
       fp_new.write(b"_0.0.t0-0 add-file true true /\xE6\n")
     else:
       fp_new.write(line)
@@ -3177,7 +3177,7 @@ def load_txdelta(sbox):
 
   sbox.build(empty=True)
 
-  # This dumpfile produced a BDB repository that generated cheksum
+  # This dumpfile produced a BDB repository that generated checksum
   # mismatches on read caused by the improper handling of
   # svn_txdelta_target ops.  The bug was fixed by r1640832.
 
@@ -4000,7 +4000,7 @@ V 27
 2005-05-03T19:10:19.975578Z
 PROPS-END
 
-Node-path: 
+Node-path:\x20
 Node-kind: dir
 Node-action: change
 Prop-content-length: 32
@@ -4035,6 +4035,28 @@ PROPS-END
   svntest.verify.verify_exit_code(None, exit_code, 0)
   if output != ['\n', '\n']:
     raise svntest.Failure("Unexpected property value %s" % output)
+
+@SkipUnless(svntest.main.is_fs_type_fsfs)
+@SkipUnless(svntest.main.fs_has_rep_sharing)
+@SkipUnless(svntest.main.python_sqlite_can_read_without_rowid)
+def build_repcache(sbox):
+  "svnadmin build-repcache"
+
+  sbox.build(create_wc = False)
+
+  # Remember and remove the existing rep-cache.
+  rep_cache = read_rep_cache(sbox.repo_dir)
+  rep_cache_path = os.path.join(sbox.repo_dir, 'db', 'rep-cache.db')
+  os.remove(rep_cache_path)
+
+  # Build a new rep-cache and compare with the original one.
+  expected_output = ["* Processed revision 1.\n"]
+  svntest.actions.run_and_verify_svnadmin(expected_output, [],
+                                          "build-repcache", sbox.repo_dir)
+
+  new_rep_cache = read_rep_cache(sbox.repo_dir)
+  if new_rep_cache != rep_cache:
+    raise svntest.Failure
 
 
 ########################################################################
@@ -4116,6 +4138,7 @@ test_list = [ None,
               recover_prunes_rep_cache_when_disabled,
               dump_include_copied_directory,
               load_normalize_node_props,
+              build_repcache,
              ]
 
 if __name__ == '__main__':

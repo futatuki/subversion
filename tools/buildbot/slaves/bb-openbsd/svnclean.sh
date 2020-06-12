@@ -22,7 +22,9 @@
 set -e
 set -x
 
-svn cleanup ../build
+if [ -d ../build/.svn ]; then
+  svn cleanup ../build
+fi
 (test -h ../svn-trunk || ln -s build ../svn-trunk)
 for i in $(jot - 6 12); do
   (test -h ../svn-1.${i}.x || ln -s build ../svn-1.${i}.x)

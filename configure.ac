@@ -115,7 +115,7 @@ AC_SUBST(SVN_APR_MAJOR_VERSION)
 SVN_LT_SOVERSION="-version-info $svn_lib_ver"
 AC_SUBST(SVN_LT_SOVERSION)
 AC_DEFINE_UNQUOTED(SVN_SOVERSION, $svn_lib_ver,
-                   [Subversion library major verson])
+                   [Subversion library major version])
 
 dnl Search for pkg-config
 AC_PATH_PROG(PKG_CONFIG, pkg-config)
@@ -759,7 +759,7 @@ AH_BOTTOM([
 #endif
 
 /* Macro used to specify that a variable is intentionally left unused.
-   Supresses compiler warnings about the variable being unused.  */
+   Suppresses compiler warnings about the variable being unused.  */
 #define SVN_UNUSED(v) ( (void)(v) )
 ])
 
@@ -1272,58 +1272,141 @@ AS_HELP_STRING([--enable-gprof],
 
 # Scripting and Bindings languages
 
-# Python: Used for testsuite, and bindings
+# Python: Used for testsuite
 AC_ARG_VAR([PYTHON], [Python interpreter command])
-AC_ARG_VAR([PYTHON2], [target Python 2 interpreter, to build bindigs])
-AC_ARG_VAR([PYTHON3], [target Python 3 interpreter, to build bindigs])
 
 PYTHON="`$abs_srcdir/build/find_python.sh`"
 if test -z "$PYTHON"; then
-  AC_MSG_WARN([Python 2.7 or later is required to run the testsuite])
+  AC_MSG_WARN([Python 2.7 or later is required to run the testsuite.])
   AC_MSG_WARN([])
   AC_MSG_WARN([If you have a suitable Python installed, but not on the])
   AC_MSG_WARN([PATH, set the environment variable PYTHON to the full path])
   AC_MSG_WARN([to the Python executable, and re-run configure])
+  PYTHON=none
 fi
-AC_PATH_PROGS(PYTHON, "$PYTHON", none)
-
-PYTHON2="`$abs_srcdir/build/find_python.sh -2`"
-if test -z "$PYTHON2"; then
-  AC_MSG_WARN([Python 2.7 or later in Python 2.x is required])
-  AC_MSG_WARN([to use the Subversion Python bindings for Python 2])
-  AC_MSG_WARN([])
-  AC_MSG_WARN([If you have a suitable Python installed, but not on the])
-  AC_MSG_WARN([PATH, set the environment variable PYTHON2 to the full path])
-  AC_MSG_WARN([to the Python executable, and re-run configure])
-fi
-AC_PATH_PROGS(PYTHON2, "$PYTHON2", none)
-
-PYTHON3="`$abs_srcdir/build/find_python.sh -3 0x3050000`"
-if test -z "$PYTHON3"; then
-  AC_MSG_WARN([Python 3.5 or later is required])
-  AC_MSG_WARN([to use the Subversion Python bindings for Python 3])
-  AC_MSG_WARN([])
-  AC_MSG_WARN([If you have a suitable Python installed, but not on the])
-  AC_MSG_WARN([PATH, set the environment variable PYTHON3 to the full path])
-  AC_MSG_WARN([to the Python executable, and re-run configure])
-fi
-AC_PATH_PROGS(PYTHON3, "$PYTHON3", none)
+AC_SUBST(PYTHON)
 
 # The minimum version for the JVM runtime for our Java bytecode.
 JAVA_OLDEST_WORKING_VER='1.8'
 # SVN_CHECK_JDK sets $JAVA_CLASSPATH
 SVN_CHECK_JDK($JAVA_OLDEST_WORKING_VER)
 
-AC_PATH_PROG(PERL, perl, none)
-
-if test -n "$RUBY"; then
-  AC_PATH_PROG(RUBY, "$RUBY", none)
+AC_ARG_WITH(swig_perl,
+[AS_HELP_STRING([[--with-swig-perl[=PATH|auto|no]|--without-swig-perl]],
+                [specify path to SWIG bindings target Perl interpreter [default=auto]])],
+[],
+[
+if test "$PERL" = "no" -o "$PERL" = "none"; then
+  with_swig_perl=no
+  AC_MSG_WARN([Disabling the SWIG Perl bindings' build by setting the PERL])
+  AC_MSG_WARN([environment variable to "none" is deprecated.])
+  AC_MSG_WARN([])
+  AC_MSG_WARN([Please use --without-swig-perl instead.])
 else
-  AC_PATH_PROGS(RUBY, ruby ruby1 ruby1.8 ruby18 ruby1.9 ruby19 ruby1.9.3 ruby193 ruby2 ruby2.0 ruby20 ruby2.1 ruby21 ruby2.2 ruby22 ruby2.3 ruby23 ruby2.4 ruby24, none)
+  with_swig_perl=auto
 fi
-if test "$RUBY" != "none"; then
+])
+case $with_swig_perl in
+  yes|auto|"")
+    AC_PATH_PROG(PERL, perl, none)
+    SWIG_PL_PERL="$PERL"
+    ;;
+  no|none)
+    SWIG_PL_PERL=none
+    ;;
+  *)
+    SWIG_PL_PERL="$with_swig_perl"
+    ;;
+esac
+AC_SUBST(SWIG_PL_PERL)
+
+# Python: as a target of SWIG Python bindings
+AC_ARG_WITH(swig_python,
+[AS_HELP_STRING([[--with-swig-python[=PATH|auto|no]|--without-swig-python]],
+                [specify path to SWIG bindings target Python interpreter [default=auto]])],
+[],
+[
+if test "$PYTHON" = "no" -o "$PYTHON" = "none"; then
+  with_swig_python=no
+else
+  with_swig_python=auto
+fi
+])
+case $with_swig_python in
+  yes|auto|"")
+    SWIG_PY_PYTHON="`$abs_srcdir/build/find_python.sh -3 0x3050000`"
+    if test "$SWIG_PY_PYTHON" = ""; then
+      SWIG_PY_PYTHON=none
+    fi
+    ;;
+  no|none)
+    SWIG_PY_PYTHON=none
+    ;;
+  *)
+    SWIG_PY_PYTHON="$with_swig_python"
+    ;;
+esac
+AC_SUBST(SWIG_PY_PYTHON)
+
+# Python 2.7: as a target of SWIG Python bindings
+AC_ARG_WITH(swig_python2,
+[AS_HELP_STRING([[--with-swig-python2[=PATH|auto|no]|--without-swig-python2]],
+                [specify path to SWIG bindings target Python 2.7 interpreter [default=auto]])],
+[],
+[
+if test "$PYTHON" = "no" -o "$PYTHON" = "none"; then
+  with_swig_python2=no
+else
+  with_swig_python2=auto
+fi
+])
+case $with_swig_python2 in
+  yes|auto|"")
+    SWIG_PY2_PYTHON="`$abs_srcdir/build/find_python.sh -2`"
+    if test "$SWIG_PY2_PYTHON" = ""; then
+      SWIG_PY2_PYTHON=none
+    fi
+    ;;
+  no|none)
+    SWIG_PY2_PYTHON=none
+    ;;
+  *)
+    SWIG_PY2_PYTHON="$with_swig_python2"
+    ;;
+esac
+AC_SUBST(SWIG_PY2_PYTHON)
+
+AC_ARG_WITH(swig_ruby,
+[AS_HELP_STRING([[--with-swig-ruby[=PATH|auto|no]|--without-swig-ruby]],
+                [specify path to SWIG bindings target Ruby interpreter [default=auto]])],
+[],
+[
+if test "$RUBY" = "no" -o "$RUBY" = "none"; then
+  with_swig_ruby=no
+  AC_MSG_WARN([Disabling the SWIG Ruby bindings' build by setting the RUBY])
+  AC_MSG_WARN([environment variable to "none" is deprecated.])
+  AC_MSG_WARN([])
+  AC_MSG_WARN([Please use --without-swig-ruby instead.])
+else
+  with_swig_ruby=auto
+fi
+])
+case $with_swig_ruby in
+  yes|auto|"")
+    AC_PATH_PROGS(RUBY, ruby ruby1 ruby1.8 ruby18 ruby1.9 ruby19 ruby1.9.3 ruby193 ruby2 ruby2.0 ruby20 ruby2.1 ruby21 ruby2.2 ruby22 ruby2.3 ruby23 ruby2.4 ruby24, none)
+    SWIG_RB_RUBY="$RUBY"
+    ;;
+  no|none)
+    SWIG_RB_RUBY=none
+    ;;
+  *)
+    SWIG_RB_RUBY="$with_swig_ruby"
+    ;;
+esac
+AC_SUBST(SWIG_RB_RUBY)
+if test "$SWIG_RB_RUBY" != "none"; then
   AC_MSG_CHECKING([rb_hash_foreach])
-  if "$RUBY" -r mkmf -e 'exit(have_func("rb_hash_foreach") ? 0 : 1)' >/dev/null; then
+  if "$SWIG_RB_RUBY" -r mkmf -e 'exit(have_func("rb_hash_foreach") ? 0 : 1)' >/dev/null; then
     AC_MSG_RESULT([yes])
     if test -n "$RDOC"; then
       AC_PATH_PROG(RDOC, "$RDOC", none)
@@ -1331,17 +1414,17 @@ if test "$RUBY" != "none"; then
       AC_PATH_PROGS(RDOC, rdoc rdoc1 rdoc1.8 rdoc18 rdoc1.9 rdoc19 rdoc1.9.3 rdoc193 rdoc2 rdoc2.0 rdoc20 rdoc2.1 rdoc21 rdoc2.2 rdoc22 rdoc2.3 rdoc23 rdoc2.4 rdoc24, none)
     fi
     AC_CACHE_CHECK([for Ruby major version], [svn_cv_ruby_major],[
-    svn_cv_ruby_major="`$RUBY -rrbconfig -e 'print RbConfig::CONFIG.fetch(%q(MAJOR))'`"
+    svn_cv_ruby_major="`$SWIG_RB_RUBY -rrbconfig -e 'print RbConfig::CONFIG.fetch(%q(MAJOR))'`"
     ])
     RUBY_MAJOR="$svn_cv_ruby_major"
 
     AC_CACHE_CHECK([for Ruby minor version], [svn_cv_ruby_minor],[
-    svn_cv_ruby_minor="`$RUBY -rrbconfig -e 'print RbConfig::CONFIG.fetch(%q(MINOR))'`"
+    svn_cv_ruby_minor="`$SWIG_RB_RUBY -rrbconfig -e 'print RbConfig::CONFIG.fetch(%q(MINOR))'`"
     ])
     RUBY_MINOR="$svn_cv_ruby_minor"
 
     AC_CACHE_CHECK([for Ruby teeny version], [svn_cv_ruby_teeny],[
-    svn_cv_ruby_teeny="`$RUBY -rrbconfig -e 'major, minor, teeny = RUBY_VERSION.split("."); print teeny;'`"
+    svn_cv_ruby_teeny="`$SWIG_RB_RUBY -rrbconfig -e 'major, minor, teeny = RUBY_VERSION.split("."); print teeny;'`"
     ])
     RUBY_TEENY="$svn_cv_ruby_teeny"
     
@@ -1350,13 +1433,13 @@ if test "$RUBY" != "none"; then
     AC_SUBST(RUBY_TEENY)
     if test \( "$RUBY_MAJOR" -eq "1" -a "$RUBY_MINOR" -gt "8" -a "$RUBY_TEENY" -lt "3" \); then
       # Disallow Ruby between 1.8.7 and 1.9.3
-      RUBY="none"
+      SWIG_RB_RUBY="none"
       AC_MSG_WARN([The detected Ruby is between 1.9 and 1.9.3])
       AC_MSG_WARN([Only 1.8.x and 1.9.3 or later are supported at this time])
     fi
   else
     AC_MSG_RESULT([no])
-    RUBY="none"
+    SWIG_RB_RUBY="none"
     AC_MSG_WARN([The detected Ruby is too old for Subversion to use])
     AC_MSG_WARN([A Ruby which has rb_hash_foreach is required to use the])
     AC_MSG_WARN([Subversion Ruby bindings])

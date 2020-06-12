@@ -3148,7 +3148,7 @@ struct text_baton_t
  * svn_fs_apply_text()      ==> ... ==> txn_body_fulltext_finalize_edits()
  */
 
-/* Write function for the publically returned stream. */
+/* Write function for the publicly returned stream. */
 static svn_error_t *
 text_stream_writer(void *baton,
                    const char *data,
@@ -3160,7 +3160,7 @@ text_stream_writer(void *baton,
   return svn_stream_write(tb->file_stream, data, len);
 }
 
-/* Close function for the publically returned stream. */
+/* Close function for the publicly returned stream. */
 static svn_error_t *
 text_stream_closer(void *baton)
 {
@@ -4644,7 +4644,7 @@ make_txn_root(svn_fs_root_t **root_p,
                                       svn_fs_fs__dag_deserialize,
                                       APR_HASH_KEY_STRING,
                                       32, 20, FALSE,
-                                      apr_pstrcat(pool, txn, ":TXN",
+                                      apr_pstrcat(pool, root->txn, ":TXN",
                                                   SVN_VA_NULL),
                                       root->pool));
 
