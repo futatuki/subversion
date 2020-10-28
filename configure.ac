@@ -1275,15 +1275,16 @@ AS_HELP_STRING([--enable-gprof],
 # Python: Used for testsuite
 AC_ARG_VAR([PYTHON], [Python interpreter command])
 
-PYTHON="`$abs_srcdir/build/find_python.sh`"
-if test -z "$PYTHON"; then
+detected_python="`$abs_srcdir/build/find_python.sh`"
+if test -z "$detected_python"; then
   AC_MSG_WARN([Python 2.7 or later is required to run the testsuite.])
   AC_MSG_WARN([])
   AC_MSG_WARN([If you have a suitable Python installed, but not on the])
   AC_MSG_WARN([PATH, set the environment variable PYTHON to the full path])
   AC_MSG_WARN([to the Python executable, and re-run configure])
-  PYTHON=none
+  detected_python=none
 fi
+PYTHON="detected_python"
 AC_SUBST(PYTHON)
 
 # The minimum version for the JVM runtime for our Java bytecode.
