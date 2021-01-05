@@ -527,17 +527,55 @@ svn_ ## TYPE ## _swig_rb_closed(VALUE self)
    and expands it into a ptr/len pair for the native call.
 */
 #ifdef SWIGPYTHON
+#if defined(SWIGPYTHON_PY3)
 %typemap(in) (const char *PTR, apr_size_t LEN) {
     Py_ssize_t pyStrLen;
-    if (!PyBytes_Check($input)) {
-        PyErr_SetString(PyExc_TypeError, "expecting a bytes");
-        SWIG_fail;
+    if (PyBytes_Check($input)) {
+        if (PyBytes_AsStringAndSize($input, (char **)&$1, &pyStrLen) == -1) {
+            SWIG_fail;
+        }
     }
-    if (PyBytes_AsStringAndSize($input, &$1, &pyStrLen) == -1) {
+    else if (PyUnicode_Check($input)) {
+        $1 = PyUnicode_AsUTF8AndSize($input, &pyStrLen);
+        if ($1 == NULL) {
+            SWIG_fail;
+        }
+    }
+    else {
+        PyErr_SetString(PyExc_TypeError, "expecting a bytes or str");
         SWIG_fail;
     }
     $2 = pyStrLen;
 }
+#else
+%typemap(in) (const char *PTR, apr_size_t LEN) (PyObject * pybytes = NULL) {
+    Py_ssize_t pyStrLen;
+    if (PyBytes_Check($input)) {
+        if (PyBytes_AsStringAndSize($input, (char **)&$1, &pyStrLen) == -1) {
+            SWIG_fail;
+        }
+    }
+    else if (PyUnicode_Check($input)) {
+        pybytes = PyUnicode_AsUTF8String($input);
+        if (pybytes == NULL) {
+            SWIG_fail;
+        }
+        if (PyBytes_AsStringAndSize(pybytes, (char **)&$1, &pyStrLen) == -1) {
+            Py_DECREF(pybytes);
+            pybytes = NULL;
+            SWIG_fail;
+        }
+    }
+    else {
+        PyErr_SetString(PyExc_TypeError, "expecting a bytes or str");
+        SWIG_fail;
+    }
+    $2 = pyStrLen;
+}
+%typemap(freearg) (const char *PTR, apr_size_t LEN) {
+    Py_XDECREF(pybytes$argnum);
+}
+#endif
 #endif
 
 #ifdef SWIGPERL

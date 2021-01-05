@@ -443,6 +443,7 @@
    fix up the svn_stream_write() ptr/len arguments
 */
 #ifdef SWIGPYTHON
+#if defined(SWIGPYTHON_PY3)
 %typemap(in) (const char *data, apr_size_t *len) ($*2_type temp) {
     Py_ssize_t length;
     if (PyBytes_Check($input)) {
@@ -451,7 +452,7 @@
         }
     }
     else if (PyUnicode_Check($input)) {
-        $1 = (char *)PyStr_AsUTF8AndSize($input, &length);
+        $1 = (char *)PyUnicode_AsUTF8AndSize($input, &length);
         if (PyErr_Occurred()) {
             SWIG_fail;
         }
@@ -464,6 +465,38 @@
     temp = ($*2_type)length;
     $2 = ($2_ltype)&temp;
 }
+#else
+%typemap(in) (const char *data, apr_size_t *len) ($*2_type temp,
+                                                  PyObject * pybytes = NULL) {
+    Py_ssize_t length;
+    if (PyBytes_Check($input)) {
+        if (PyBytes_AsStringAndSize($input, (char **)&$1, &length) == -1) {
+            SWIG_fail;
+        }
+    }
+    else if (PyUnicode_Check($input)) {
+        pybytes = PyUnicode_AsUTF8String($input);
+        if (pybytes == NULL) {
+            SWIG_fail;
+        }
+        if (PyBytes_AsStringAndSize(pybytes, (char **)&$1, &length) == -1) {
+            Py_DECREF(pybytes);
+            pybytes = NULL;
+            SWIG_fail;
+        }
+    }
+    else {
+        PyErr_SetString(PyExc_TypeError,
+                        "expecting a bytes or str object for the buffer");
+        SWIG_fail;
+    }
+    temp = ($*2_type)length;
+    $2 = ($2_ltype)&temp;
+}
+%typemap(freearg) (const char *data, apr_size_t *len) {
+    Py_XDECREF(pybytes$argnum);
+}
+#endif
 #endif
 #ifdef SWIGPERL
 %typemap(in) (const char *data, apr_size_t *len) ($*2_type temp) {

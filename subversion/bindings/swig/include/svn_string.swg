@@ -74,19 +74,53 @@ typedef struct svn_string_t svn_string_t;
 
 #ifdef SWIGPYTHON
 %typemap(in) svn_stringbuf_t * {
-    if (!PyBytes_Check($input)) {
-        PyErr_SetString(PyExc_TypeError, "not a bytes object");
-        SWIG_fail;
+    if ($input == Py_None) {
+        $1 = NULL;
     }
-    {
-      Py_ssize_t strBufLen;
-      char *strBufChar;
-      if (-1 == PyBytes_AsStringAndSize($input, &strBufChar, &strBufLen)) {
+    else if (PyBytes_Check($input)) {
+        Py_ssize_t strBufLen;
+        char *strBufChar;
+        if (-1 == PyBytes_AsStringAndSize($input, &strBufChar, &strBufLen)) {
+            SWIG_fail;
+        }
+        $1 = svn_stringbuf_ncreate((const char *)strBufChar, strBufLen,
+                                   /* ### gah... what pool to use? */
+                                   _global_pool);
+    }
+    else if (PyUnicode_Check($input)) {
+        Py_ssize_t strBufLen;
+#if defined(SWIGPYTHON_PY3)
+        const char *strBufChar;
+        strBufChar = PyUnicode_AsUTF8AndSize($input, &strBufLen);
+        if (strBufChar == NULL) {
+            SWIG_fail;
+        }
+        $1 = svn_stringbuf_ncreate(strBufChar, strBufLen,
+                                   /* ### futatuki... same issue in
+                                          case of Bytes */
+                                   _global_pool);
+#else
+        PyObject *pyBytesObj;
+        char *strBufChar;
+        pyBytesObj = PyUnicode_AsUTF8String($input);
+        if (pyBytesObj == NULL) {
+            SWIG_fail;
+        }
+        if (-1 == PyBytes_AsStringAndSize(pyBytesObj, &strBufChar,
+                                          &strBufLen)) {
+            Py_DECREF(pyBytesObj);
+            SWIG_fail;
+        }
+        $1 = svn_stringbuf_ncreate((const char *)strBufChar, strBufLen,
+                                   /* ### futatuki... same issue in
+                                          case of Bytes */
+                                   _global_pool);
+        Py_DECREF(pyBytesObj);
+#endif
+    }
+    else {
+        PyErr_SetString(PyExc_TypeError, "not a bytes, str or None object");
         SWIG_fail;
-      }
-      $1 = svn_stringbuf_ncreate(strBufChar, strBufLen,
-                                 /* ### gah... what pool to use? */
-                                 _global_pool);
     }
 }
 #endif
@@ -175,23 +209,74 @@ typedef struct svn_string_t svn_string_t;
 
 /* const svn_string_t * is always an input parameter */
 #ifdef SWIGPYTHON
+#if defined(SWIGPYTHON_PY3)
 %typemap(in) const svn_string_t * (svn_string_t value) {
-    if ($input == Py_None)
+    if ($input == Py_None) {
         $1 = NULL;
+    }
     else {
         Py_ssize_t pyStrLen;
-        if (!PyBytes_Check($input)) {
-            PyErr_SetString(PyExc_TypeError, "not a bytes object");
-            SWIG_fail;
+        if (PyBytes_Check($input)) {
+            if (PyBytes_AsStringAndSize($input, (char **)&(value.data),
+                                        &pyStrLen) == -1) {
+                SWIG_fail;
+            }
         }
-        if (PyBytes_AsStringAndSize($input, (char **)&(value.data),
-                                    &pyStrLen) == -1) {
+        else if (PyUnicode_Check($input)) {
+            value.data = PyUnicode_AsUTF8AndSize($input, &pyStrLen);
+            if (value.data == NULL) {
+                SWIG_fail;
+            }
+        }
+        else {
+            PyErr_SetString(PyExc_TypeError,
+                            "not a bytes, str, or None object");
             SWIG_fail;
         }
         value.len = pyStrLen;
         $1 = &value;
     }
 }
+#else
+/* for Python 2 */
+%typemap(in) const svn_string_t * (svn_string_t value,
+                                   PyObject * pybytes = NULL) {
+    if ($input == Py_None) {
+        $1 = NULL;
+    }
+    else {
+        Py_ssize_t pyStrLen;
+        if (PyBytes_Check($input)) {
+            if (PyBytes_AsStringAndSize($input, (char **)&(value.data),
+                                        &pyStrLen) == -1) {
+                SWIG_fail;
+            }
+        }
+        else if (PyUnicode_Check($input)) {
+            pybytes = PyUnicode_AsUTF8String($input);
+            if (pybytes == NULL) {
+                SWIG_fail;
+            }
+            if (PyBytes_AsStringAndSize(pybytes, (char **)&(value.data),
+                                        &pyStrLen) == -1) {
+                Py_DECREF(pybytes);
+                pybytes = NULL;
+                SWIG_fail;
+            }
+        }
+        else {
+            PyErr_SetString(PyExc_TypeError,
+                            "not a bytes, str, or None object");
+            SWIG_fail;
+        }
+        value.len = pyStrLen;
+        $1 = &value;
+    }
+}
+%typemap(freearg) const svn_string_t * {
+    Py_XDECREF(pybytes$argnum);
+}
+#endif
 #endif
 #ifdef SWIGPERL
 %typemap(in) const svn_string_t * (svn_string_t value) {
