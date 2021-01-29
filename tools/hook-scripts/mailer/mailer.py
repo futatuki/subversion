@@ -46,14 +46,21 @@
 
 import os
 import sys
-import configparser
-from urllib.parse import quote as urllib_parse_quote
+if sys.hexversion >= 0x3000000:
+  PY3 = True
+  import configparser
+  from urllib.parse import quote as _url_quote
+else:
+  PY3 = False
+  import ConfigParser as configparser
+  from urllib import quote as  _url_quote
 import time
 import subprocess
-from io import BytesIO, StringIO
+from io import BytesIO
 import smtplib
 import re
 import tempfile
+import codecs
 
 # Minimal version of Subversion's bindings required
 _MIN_SVN_VERSION = [1, 5, 0]
@@ -72,6 +79,28 @@ if _MIN_SVN_VERSION > [svn.core.SVN_VER_MAJOR,
     % ".".join([str(x) for x in _MIN_SVN_VERSION]))
   sys.exit(1)
 
+# Absorb difference between Python 2 and Python >= 3
+if PY3:
+  def to_bytes(x):
+    return x.encode('utf-8')
+
+  def to_str(x):
+    return x.decode('utf-8')
+
+  # We never use sys.stdin nor sys.stdout TextIOwrapper.
+  _stdin = sys.stdin.buffer
+  _stdout = sys.stdout.buffer
+else:
+  # Python 2
+  def to_bytes(x):
+    return x
+
+  def to_str(x):
+    return x
+
+  _stdin = sys.stdin
+  _stdout = sys.stdout
+
 
 SEPARATOR = '=' * 78
 
@@ -88,10 +117,10 @@ def main(pool, cmd, config_fname, repos_dir, cmd_args):
     messenger = Commit(pool, cfg, repos)
   elif cmd == 'propchange' or cmd == 'propchange2':
     revision = int(cmd_args[0])
-    author = cmd_args[1].decode('utf-8')
-    propname = cmd_args[2].decode('utf-8')
+    author = cmd_args[1]
+    propname = cmd_args[2]
     if cmd == 'propchange2' and cmd_args[3]:
-      action = cmd_args[3].decode('utf-8')
+      action = cmd_args[3]
     else:
       action = 'A'
     repos = Repository(repos_dir, revision, pool)
@@ -103,7 +132,7 @@ def main(pool, cmd, config_fname, repos_dir, cmd_args):
                  })
     messenger = PropChange(pool, cfg, repos, author, propname, action)
   elif cmd == 'lock' or cmd == 'unlock':
-    author = cmd_args[0].decode('utf-8')
+    author = cmd_args[0]
     repos = Repository(repos_dir, 0, pool) ### any old revision will do
     # Override the repos revision author with the author of the lock/unlock
     repos.author = author
@@ -119,7 +148,7 @@ def main(pool, cmd, config_fname, repos_dir, cmd_args):
 
 
 def remove_leading_slashes(path):
-  while path and path[0] == '/':
+  while path and path[0:1] == b'/':
     path = path[1:]
   return path
 
@@ -150,8 +179,16 @@ class OutputBase:
     except ValueError:
       truncate_subject = 0
 
-    if truncate_subject and len(subject) > truncate_subject:
-      subject = subject[:(truncate_subject - 3)] + "..."
+    # truncate subject as UTF-8 string.
+    # Note: there still exists an issue on combining characters.
+    if truncate_subject:
+      bsubject = to_bytes(subject)
+      if len(bsubject) > truncate_subject:
+        idx = truncate_subject - 2
+        while b'\x80' <= bsubject[idx-1:idx] <= b'\xbf':
+          idx -= 1
+        subject = to_str(bsubject[:idx-1]) + "..."
+
     return subject
 
   def start(self, group, params):
@@ -169,10 +206,14 @@ class OutputBase:
     representation."""
     raise NotImplementedError
 
-  def write(self, output):
+  def write_binary(self, output):
     """Override this method.
-    Append the literal text string OUTPUT to the output representation."""
-    return self.write_binary(output.encode('utf-8'))
+    Append the binary data OUTPUT to the output representation."""
+    raise NotImplementedError
+
+  def write(self, output):
+    """Append the literal text string OUTPUT to the output representation."""
+    return self.write_binary(to_bytes(output))
 
   def run(self, cmd):
     """Override this method, if the default implementation is not sufficient.
@@ -184,7 +225,7 @@ class OutputBase:
 
     buf = pipe_ob.stdout.read(self._CHUNKSIZE)
     while buf:
-      self.write(buf)
+      self.write_binary(buf)
       buf = pipe_ob.stdout.read(self._CHUNKSIZE)
 
     # wait on the child so we don't end up with a billion zombies
@@ -351,7 +392,7 @@ class StandardOutput(OutputBase):
 
   def __init__(self, cfg, repos, prefix_param):
     OutputBase.__init__(self, cfg, repos, prefix_param)
-    self.write_binary = sys.stdout.buffer.write
+    self.write_binary = _stdout.write
 
   def start(self, group, params):
     self.write("Group: " + (group or "defaults") + "\n")
@@ -359,6 +400,12 @@ class StandardOutput(OutputBase):
 
   def finish(self):
     pass
+
+  if (PY3 and (codecs.lookup(sys.stdout.encoding) != codecs.lookup('utf-8'))):
+    def write(self, output):
+      """Write text as *default* encoding string"""
+      return self.write_binary(output.encode(sys.stdout.encoding,
+                                             'backslashreplace'))
 
 
 class PipeOutput(MailedOutput):
@@ -421,8 +468,7 @@ class Commit(Messenger):
 
     self.changelist = sorted(editor.get_changes().items())
 
-    log = repos.get_rev_prop(svn.core.SVN_PROP_REVISION_LOG) or ''
-    log = log.decode('utf-8')
+    log = to_str(repos.get_rev_prop(svn.core.SVN_PROP_REVISION_LOG) or b'')
 
     # collect the set of groups and the unique sets of params for the options
     self.groups = { }
@@ -441,7 +487,7 @@ class Commit(Messenger):
     # figure out the changed directories
     dirs = { }
     for path, change in self.changelist:
-      path = path.decode('utf-8')
+      path = to_str(path)
       if change.item_kind == svn.core.svn_node_dir:
         dirs[path] = None
       else:
@@ -532,7 +578,7 @@ class PropChange(Messenger):
         elif self.action == 'M':
           self.output.write('Property diff:\n')
           tempfile1 = tempfile.NamedTemporaryFile()
-          tempfile1.write(sys.stdin.read())
+          tempfile1.write(_stdin.read())
           tempfile1.flush()
           tempfile2 = tempfile.NamedTemporaryFile()
           tempfile2.write(self.repos.get_rev_prop(self.propname))
@@ -594,9 +640,7 @@ class Lock(Messenger):
                         or 'unlock_subject_prefix'))
 
     # read all the locked paths from STDIN and strip off the trailing newlines
-    self.dirlist = [x for x in sys.stdin.readlines()]
-    for i in range(len(self.dirlist)):
-      self.dirlist[i] = self.dirlist[i].decode('utf-8')
+    self.dirlist = [to_str(x).rstrip() for x in _stdin.readlines()]
 
     # collect the set of groups and the unique sets of params for the options
     self.groups = { }
@@ -625,7 +669,7 @@ class Lock(Messenger):
     # The lock comment is the same for all paths, so we can just pull
     # the comment for the first path in the dirlist and cache it.
     self.lock = svn.fs.svn_fs_get_lock(self.repos.fs_ptr,
-                                       self.dirlist[0].encode('utf-8'),
+                                       to_bytes(self.dirlist[0]),
                                        self.pool)
 
   def generate(self):
@@ -699,9 +743,9 @@ class DiffURLSelections:
     # parameters for the configuration module, otherwise we may get
     # KeyError exceptions.
     params = self.params.copy()
-    params['path'] = change.path and urllib_parse_quote(change.path) or None
-    params['base_path'] = change.base_path and urllib_parse_quote(change.base_path) \
-                          or None
+    params['path'] = _url_quote(change.path) if change.path else None
+    params['base_path'] = (_url_quote(change.base_path)
+                           if change.base_path else None)
     params['rev'] = repos_rev
     params['base_rev'] = change.base_rev
 
@@ -755,7 +799,7 @@ def generate_content(renderer, cfg, repos, changelist, group, params, paths,
     author=repos.author,
     date=date,
     rev=repos.rev,
-    log=repos.get_rev_prop(svn.core.SVN_PROP_REVISION_LOG) or '',
+    log=to_str(repos.get_rev_prop(svn.core.SVN_PROP_REVISION_LOG) or b''),
     commit_url=commit_url,
     added_data=generate_list('A', changelist, paths, True),
     replaced_data=generate_list('R', changelist, paths, True),
@@ -863,7 +907,9 @@ class DiffGenerator:
 
       # figure out if/how to generate a diff
 
-      base_path = remove_leading_slashes(change.base_path)
+      base_path_bytes = remove_leading_slashes(change.base_path)
+      base_path = (to_str(base_path_bytes)
+                   if base_path_bytes is not None else None)
       if change.action == svn.repos.CHANGE_ACTION_DELETE:
         # it was delete.
         kind = 'D'
@@ -874,10 +920,9 @@ class DiffGenerator:
         # show the diff?
         if self.diffsels.delete:
           diff = svn.fs.FileDiff(self.repos.get_root(change.base_rev),
-                                 base_path, None, None, self.pool)
+                                 base_path_bytes, None, None, self.pool)
 
-          label1 = '%s\t%s\t(r%s)' % (base_path.decode('utf-8'), self.date,
-              change.base_rev)
+          label1 = '%s\t%s\t(r%s)' % (base_path, self.date, change.base_rev)
           label2 = '/dev/null\t00:00:00 1970\t(deleted)'
           singular = True
 
@@ -896,27 +941,26 @@ class DiffGenerator:
             # show the diff?
             if self.diffsels.modify:
               diff = svn.fs.FileDiff(self.repos.get_root(change.base_rev),
-                                     base_path,
+                                     base_path_bytes,
                                      self.repos.root_this, change.path,
                                      self.pool)
-              label1 = '%s\t%s\t(r%s, copy source)' \
-                       % (base_path.decode('utf-8'), base_date, change.base_rev)
-              label2 = '%s\t%s\t(r%s)' \
-                       % (change.path.decode('utf-8'), self.date, \
-                          self.repos.rev)
+              label1 = ('%s\t%s\t(r%s, copy source)'
+                        % (base_path, base_date, change.base_rev))
+              label2 = ('%s\t%s\t(r%s)'
+                        % (to_str(change.path), self.date, self.repos.rev))
               singular = False
           else:
             # this file was copied.
             kind = 'C'
             if self.diffsels.copy:
               diff = svn.fs.FileDiff(None, None, self.repos.root_this,
-                                     change.path.decode('utf-8'), self.pool)
-              label1 = '/dev/null\t00:00:00 1970\t' \
-                       '(empty, because file is newly added)'
-              label2 = '%s\t%s\t(r%s, copy of r%s, %s)' \
-                       % (change.path.decode('utf-8'), self.date,
-                          self.repos.rev, change.base_rev,
-                          base_path.decode('utf-8'))
+                                     change.path, self.pool)
+              label1 = ('/dev/null\t00:00:00 1970\t'
+                        '(empty, because file is newly added)')
+              label2 = ('%s\t%s\t(r%s, copy of r%s, %s)'
+                        % (to_str(change.path),
+                           self.date, self.repos.rev, change.base_rev,
+                           base_path))
               singular = False
         else:
           # the file was added.
@@ -932,7 +976,7 @@ class DiffGenerator:
             label1 = '/dev/null\t00:00:00 1970\t' \
                      '(empty, because file is newly added)'
             label2 = '%s\t%s\t(r%s)' \
-                     % (change.path.decode('utf-8'), self.date, self.repos.rev)
+                     % (to_str(change.path), self.date, self.repos.rev)
             singular = True
 
       elif not change.text_changed:
@@ -952,9 +996,9 @@ class DiffGenerator:
                                  self.repos.root_this, change.path,
                                  self.pool)
           label1 = '%s\t%s\t(r%s)' \
-                   % (base_path.decode('utf-8'), base_date, change.base_rev)
+                   % (base_path, base_date, change.base_rev)
           label2 = '%s\t%s\t(r%s)' \
-                   % (change.path.decode('utf-8'), self.date, self.repos.rev)
+                   % (to_str(change.path), self.date, self.repos.rev)
           singular = False
 
       if diff:
@@ -977,7 +1021,7 @@ class DiffGenerator:
       # return a data item for this diff
       return _data(
         path=change.path,
-        base_path=base_path,
+        base_path=base_path_bytes,
         base_rev=change.base_rev,
         diff=diff,
         diff_url=diff_url,
@@ -1092,7 +1136,7 @@ class TextCommitRenderer:
 
     w = self.output.write
 
-    w('Author: %s\nDate: %s\nNew Revision: %s\n' % (data.author.decode('utf-8'),
+    w('Author: %s\nDate: %s\nNew Revision: %s\n' % (data.author,
                                                       data.date,
                                                       data.rev))
 
@@ -1101,7 +1145,7 @@ class TextCommitRenderer:
     else:
       w('\n')
 
-    w('Log:\n%s\n\n' % data.log.strip().decode('utf-8'))
+    w('Log:\n%s\n\n' % data.log.strip())
 
     # print summary sections
     self._render_list('Added', data.added_data)
@@ -1144,7 +1188,7 @@ class TextCommitRenderer:
           props = '   (props changed)'
       else:
         props = ''
-      w('   %s%s%s\n' % (d.path.decode('utf-8'), is_dir, props))
+      w('   %s%s%s\n' % (to_str(d.path), is_dir, props))
       if d.copied:
         if is_dir:
           text = ''
@@ -1153,7 +1197,7 @@ class TextCommitRenderer:
         else:
           text = ' unchanged'
         w('      - copied%s from r%d, %s%s\n'
-          % (text, d.base_rev, d.base_path.decode('utf-8'), is_dir))
+          % (text, d.base_rev, to_str(d.base_path), is_dir))
 
   def _render_diffs(self, diffs, section_header):
     """Render diffs. Write the SECTION_HEADER if there are actually
@@ -1170,20 +1214,20 @@ class TextCommitRenderer:
         w(section_header)
         section_header_printed = True
       if diff.kind == 'D':
-        w('\nDeleted: %s\n' % diff.base_path.decode('utf-8'))
+        w('\nDeleted: %s\n' % to_str(diff.base_path))
       elif diff.kind == 'A':
-        w('\nAdded: %s\n' % diff.path.decode('utf-8'))
+        w('\nAdded: %s\n' % to_str(diff.path))
       elif diff.kind == 'C':
         w('\nCopied: %s (from r%d, %s)\n'
-          % (diff.path.decode('utf-8'), diff.base_rev,
-             diff.base_path.decode('utf-8')))
+          % (to_str(diff.path), diff.base_rev,
+             to_str(diff.base_path)))
       elif diff.kind == 'W':
         w('\nCopied and modified: %s (from r%d, %s)\n'
-          % (diff.path.decode('utf-8'), diff.base_rev,
-             diff.base_path.decode('utf-8')))
+          % (to_str(diff.path), diff.base_rev,
+             to_str(diff.base_path)))
       else:
         # kind == 'M'
-        w('\nModified: %s\n' % diff.path.decode('utf-8'))
+        w('\nModified: %s\n' % to_str(diff.path))
 
       if diff.diff_url:
         w('URL: %s\n' % diff.diff_url)
@@ -1221,6 +1265,8 @@ class Repository:
     self.root_this = self.get_root(rev)
 
     self.author = self.get_rev_prop(svn.core.SVN_PROP_REVISION_AUTHOR)
+    if self.author is not None:
+      self.author = to_str(self.author)
 
   def get_rev_prop(self, propname, rev = None):
     if not rev:
@@ -1429,9 +1475,9 @@ class Config:
     "Return the path's associated groups."
     groups = []
     for group, pattern, exclude_pattern, repos_params, search_logmsg_re in self._group_re:
-      match = pattern.match(path.decode('utf-8'))
+      match = pattern.match(to_str(path))
       if match:
-        if exclude_pattern and exclude_pattern.match(path.decode('utf-8')):
+        if exclude_pattern and exclude_pattern.match(to_str(path)):
           continue
         params = repos_params.copy()
         params.update(match.groupdict())
@@ -1510,8 +1556,7 @@ if the property was added, modified or deleted, respectively.
     usage()
 
   cmd = sys.argv[1]
-  repos_dir = svn.core.svn_path_canonicalize(sys.argv[2])
-  repos_dir = repos_dir.decode('utf-8')
+  repos_dir = to_str(svn.core.svn_path_canonicalize(to_bytes(sys.argv[2])))
   try:
     expected_args = cmd_list[cmd]
   except KeyError:
