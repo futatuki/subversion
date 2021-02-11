@@ -669,7 +669,8 @@ def drop(revision_url_pattern):
   # the top -- that way we know whom to look at first for commit access
   # proposals.
   sorted_contributors = sorted(Contributor.all_contributors.values(),
-                               key = Contributor.sort_key)
+                               key=Contributor.sort_key,
+                               reverse=True)
   for c in sorted_contributors:
     if c not in seen_contributors:
       if c.score() > 0:
@@ -721,6 +722,9 @@ def process_committers(committers):
       c.is_committer = True
       c.is_full_committer = in_full_committers
     line = committers.readline()
+  svn_role = Contributor.parse('svn-role <svnsvn{_AT_}svn-qavm.apache.org>')
+  Contributor.get(*svn_role).is_committer = True 
+  Contributor.get(*svn_role).is_full_committer = True # elide it from the listing
 
 
 def usage():

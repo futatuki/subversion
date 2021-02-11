@@ -439,7 +439,7 @@ svn_ ## TYPE ## _swig_rb_closed(VALUE self)
     $result = Py_None;
 }
 
-%typemap(out) svn_error_t * SVN_ERR_WITH_ATTRS (apr_status_t apr_err, 
+%typemap(out) svn_error_t * SVN_ERR_WITH_ATTRS (apr_status_t apr_err,
                                                 PyObject *exc_class,
                                                 PyObject *exc_ob) {
     apr_err = 0;
@@ -451,7 +451,7 @@ svn_ ## TYPE ## _swig_rb_closed(VALUE self)
           {
             svn_swig_py_build_svn_exception(&exc_class, &exc_ob, $1);
             if (exc_ob == NULL)
-              { 
+              {
                 /* We couldn't get an exception instance. */
                 if (exc_class != NULL)
                   {
@@ -461,8 +461,8 @@ svn_ ## TYPE ## _swig_rb_closed(VALUE self)
                   }
                 SWIG_fail;
               }
-            /* We have an exeception instance, but we don't raise it.
-               Our caller will have to do that. */
+            /* We have an exeception instance, but we don't raise it until
+               typemap(ret) block after typemap(argout) blocks. */
           }
         else
           {
@@ -529,11 +529,19 @@ svn_ ## TYPE ## _swig_rb_closed(VALUE self)
 #ifdef SWIGPYTHON
 %typemap(in) (const char *PTR, apr_size_t LEN) {
     Py_ssize_t pyStrLen;
-    if (!PyBytes_Check($input)) {
-        PyErr_SetString(PyExc_TypeError, "expecting a bytes");
-        SWIG_fail;
+    if (PyBytes_Check($input)) {
+        if (PyBytes_AsStringAndSize($input, (char **)&$1, &pyStrLen) == -1) {
+            SWIG_fail;
+        }
     }
-    if (PyBytes_AsStringAndSize($input, &$1, &pyStrLen) == -1) {
+    else if (PyUnicode_Check($input)) {
+        $1 = (char *)PyStr_AsUTF8AndSize($input, &pyStrLen);
+        if (PyErr_Occurred()) {
+            SWIG_fail;
+        }
+    }
+    else {
+        PyErr_SetString(PyExc_TypeError, "expecting a bytes or str");
         SWIG_fail;
     }
     $2 = pyStrLen;

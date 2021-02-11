@@ -690,8 +690,8 @@ parse_pointer_value(const char *start, const char *limit, char **end)
       || *end >= limit)         /* representation too long */
     return NULL;
 
-  ptr = (const unsigned char*)val;
-  if (val != (apr_uint64_t)ptr)  /* truncated value */
+  ptr = (const unsigned char*)(apr_uintptr_t)val;
+  if (val != (apr_uintptr_t)ptr)/* truncated value */
     return NULL;
 
   return ptr;

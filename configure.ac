@@ -56,6 +56,32 @@ SVN_CC_MODE_SETUP
 # Look for a C++ compiler (before anything can set CXXFLAGS)
 CXXUSERFLAGS="$CXXFLAGS"
 AC_PROG_CXX
+dnl Select C++ language level for GNU-like compilers
+dnl This is an advanced option for maintainers
+AC_ARG_ENABLE([c++],
+AS_HELP_STRING([--enable-c++=VER],
+               [Select C++ language standard for g++-like compilers]),
+[
+    if test "$enableval" = "yes"; then
+      cxx_language_level=any
+    elif test  "$enableval" = "no"; then
+      cxx_language_level=any
+      AC_MSG_WARN([--disable-c++ has no effect])
+    else
+      case "$enableval" in
+        [c++[0-9]*])   cxx_language_level="$enableval";;
+        [gnu++[0-9]*]) cxx_language_level="$enableval";;
+        [[0-9]*])      cxx_language_level="c++$enableval";;
+        [*])           cxx_language_level=undefined;;
+      esac
+      if test "$cxx_language_level" = undefined; then
+        AC_MSG_ERROR([--enable-c++ does not accept $enableval])
+      fi
+    fi
+],
+[
+    cxx_language_level=any
+])
 SVN_CXX_MODE_SETUP
 
 # Look for a C pre-processor
@@ -222,6 +248,8 @@ SVN_EXPAND_VAR(svn_localedir, "${exp_localedir}")
 AC_DEFINE_UNQUOTED(SVN_LOCALE_DIR, "${svn_localedir}",
                    [Defined to be the path to the installed locale dirs])
 
+dnl Libtool has been broken for decades, incorrectly passing 'cru' to 'ar'
+AR_FLAGS=${AR_FLAGS:-cr}
 dnl Check for libtool -- we'll definitely need it for all our shared libs!
 AC_MSG_NOTICE([configuring libtool now])
 ifdef([LT_INIT], [LT_INIT], [AC_PROG_LIBTOOL])
@@ -1284,7 +1312,7 @@ if test -z "$detected_python"; then
   AC_MSG_WARN([to the Python executable, and re-run configure])
   detected_python=none
 fi
-PYTHON="detected_python"
+PYTHON="$detected_python"
 AC_SUBST(PYTHON)
 
 # The minimum version for the JVM runtime for our Java bytecode.
@@ -1294,21 +1322,36 @@ SVN_CHECK_JDK($JAVA_OLDEST_WORKING_VER)
 
 AC_ARG_WITH(swig_perl,
 [AS_HELP_STRING([[--with-swig-perl[=PATH|auto|no]|--without-swig-perl]],
-                [specify path to SWIG bindings target Perl interpreter [default=auto]])],
+                [Specify path to SWIG bindings target Perl interpreter
+                 [default=auto]. If the option value is 'auto' or it is not
+                  specfied, search for the Perl program.]
+                m4_ifndef([SVN_RELEASE_MODE],
+                  [[Implies --with-swig=yes if PATH is specfied or Perl
+                    is found on 'auto' detection.]]))
+],
 [],
 [
-if test "$PERL" = "no" -o "$PERL" = "none"; then
-  with_swig_perl=no
-  AC_MSG_WARN([Disabling the SWIG Perl bindings' build by setting the PERL])
-  AC_MSG_WARN([environment variable to "none" is deprecated.])
-  AC_MSG_WARN([])
-  AC_MSG_WARN([Please use --without-swig-perl instead.])
+if test -n "$PERL"; then
+  if test "$PERL" = "no" -o "$PERL" = "none"; then
+    with_swig_perl=no
+    AC_MSG_WARN([Disabling the SWIG Perl bindings' build by setting the PERL])
+    AC_MSG_WARN([environment variable to "none" is deprecated.])
+    AC_MSG_WARN([])
+    AC_MSG_WARN([Please use --without-swig-perl instead.])
+  else
+    with_swig_perl=auto
+    AC_MSG_WARN([Specfying the Perl path for SWIG Perl bindings' build])
+    AC_MSG_WARN([by setting the PERL environment variable is deprecated.])
+    AC_MSG_WARN([])
+    AC_MSG_WARN([Please use --with-swig-perl=PATH instead.])
+  fi
 else
   with_swig_perl=auto
 fi
 ])
 case $with_swig_perl in
   yes|auto|"")
+    # honor PERL variable only if it is set and is full path.
     AC_PATH_PROG(PERL, perl, none)
     SWIG_PL_PERL="$PERL"
     ;;
@@ -1324,14 +1367,16 @@ AC_SUBST(SWIG_PL_PERL)
 # Python: as a target of SWIG Python bindings
 AC_ARG_WITH(swig_python,
 [AS_HELP_STRING([[--with-swig-python[=PATH|auto|no]|--without-swig-python]],
-                [specify path to SWIG bindings target Python interpreter [default=auto]])],
+                [Specify path to SWIG bindings target Python interpreter
+                 [default=auto]. If the option value is 'auto' or it is not
+                 specfied, search for the Python program.]
+                m4_ifndef([SVN_RELEASE_MODE],
+                  [[Implies --with-swig=yes if PATH is specfied or Python
+                    is found on 'auto' detection.]]))
+],
 [],
 [
-if test "$PYTHON" = "no" -o "$PYTHON" = "none"; then
-  with_swig_python=no
-else
   with_swig_python=auto
-fi
 ])
 case $with_swig_python in
   yes|auto|"")
@@ -1379,21 +1424,36 @@ AC_SUBST(SWIG_PY2_PYTHON)
 
 AC_ARG_WITH(swig_ruby,
 [AS_HELP_STRING([[--with-swig-ruby[=PATH|auto|no]|--without-swig-ruby]],
-                [specify path to SWIG bindings target Ruby interpreter [default=auto]])],
+                [specify path to SWIG bindings target Ruby interpreter
+                 [default=auto]. If the option value is 'auto' or it is not
+                  specfied, search for the Ruby program.]
+                m4_ifndef([SVN_RELEASE_MODE],
+                  [[Implies --with-swig=yes if PATH is specfied or Ruby
+                    is found on 'auto' detection.]]))
+],
 [],
 [
-if test "$RUBY" = "no" -o "$RUBY" = "none"; then
-  with_swig_ruby=no
-  AC_MSG_WARN([Disabling the SWIG Ruby bindings' build by setting the RUBY])
-  AC_MSG_WARN([environment variable to "none" is deprecated.])
-  AC_MSG_WARN([])
-  AC_MSG_WARN([Please use --without-swig-ruby instead.])
+if test -n "$RUBY"; then
+  if test "$RUBY" = "no" -o "$RUBY" = "none"; then
+    with_swig_ruby=no
+    AC_MSG_WARN([Disabling the SWIG Ruby bindings' build by setting the RUBY])
+    AC_MSG_WARN([environment variable to "none" is deprecated.])
+    AC_MSG_WARN([])
+    AC_MSG_WARN([Please use --without-swig-ruby instead.])
+  else
+    with_swig_ruby="$RUBY"
+    AC_MSG_WARN([Specfying the Ruby path for SWIG Ruby bindings' build])
+    AC_MSG_WARN([by setting the RUBY environment variable is deprecated.])
+    AC_MSG_WARN([])
+    AC_MSG_WARN([Please use --with-swig-ruby=PATH instead.])
+  fi
 else
   with_swig_ruby=auto
 fi
 ])
 case $with_swig_ruby in
   yes|auto|"")
+    # honor RUBY variable only if it is set and is full path.
     AC_PATH_PROGS(RUBY, ruby ruby1 ruby1.8 ruby18 ruby1.9 ruby19 ruby1.9.3 ruby193 ruby2 ruby2.0 ruby20 ruby2.1 ruby21 ruby2.2 ruby22 ruby2.3 ruby23 ruby2.4 ruby24, none)
     SWIG_RB_RUBY="$RUBY"
     ;;
@@ -1428,7 +1488,7 @@ if test "$SWIG_RB_RUBY" != "none"; then
     svn_cv_ruby_teeny="`$SWIG_RB_RUBY -rrbconfig -e 'major, minor, teeny = RUBY_VERSION.split("."); print teeny;'`"
     ])
     RUBY_TEENY="$svn_cv_ruby_teeny"
-    
+
     AC_SUBST(RUBY_MAJOR)
     AC_SUBST(RUBY_MINOR)
     AC_SUBST(RUBY_TEENY)

@@ -503,10 +503,13 @@ fast-clean: doc-clean
           fi                                                         \
         done
 	echo $(CLEAN_FILES) | xargs rm -f --
-	find $(CTYPES_PYTHON_SRC_DIR) $(SWIG_PY_SRC_DIR) $(SWIG_PY_DIR) \
+	for d in $(CTYPES_PYTHON_SRC_DIR) $(SWIG_PY_SRC_DIR) $(SWIG_PY_DIR) \
 		$(SWIG_PY2_SRC_DIR) $(SWIG_PY2_DIR) \
-		$(abs_srcdir)/build $(top_srcdir)/subversion/tests/cmdline/svntest \
-		-name "*.pyc" -exec rm {} ';'
+		$(abs_srcdir)/build $(top_srcdir)/subversion/tests/cmdline/svntest; \
+	do \
+	  test -e $$d || continue; \
+	  find $$d -name "*.pyc" -exec rm {} ';'; \
+	done
 
 # clean everything, returning to before './configure' was run.
 SVN_CONFIG_SCRIPT_FILES = @SVN_CONFIG_SCRIPT_FILES@
@@ -523,6 +526,7 @@ local-distclean: local-clean
 local-extraclean: extraclean-bindings local-distclean
 	rm -f $(top_srcdir)/build-outputs.mk \
               $(top_srcdir)/subversion/svn_private_config.h.in \
+              $(top_srcdir)/aclocal.m4 \
               $(top_srcdir)/configure \
               $(top_srcdir)/gen-make.opts \
               $(top_srcdir)/build/config.guess \
@@ -969,7 +973,7 @@ clean-swig-pl:
 	fi
 	for d in $(SWIG_PL_DIR)/libsvn_swig_perl; \
 	do \
-	  cd $$d; \
+	  test -e $$d && cd $$d || continue; \
 	  rm -rf *.lo *.la *.o .libs; \
 	done
 	if [ -f "$(SWIG_PL_DIR)/native/Makefile" ]; then \
@@ -1025,9 +1029,14 @@ clean-swig-py:
 	fi
 	for d in $(SWIG_PY_DIR) $(SWIG_PY_DIR)/libsvn_swig_py; \
 	do \
-	  cd $$d && rm -rf *.lo *.la *.o *.pyc .libs; \
+	  test -e $$d && cd $$d || continue; \
+	  rm -rf *.lo *.la *.o *.pyc .libs; \
 	done
-	find $(SWIG_PY_SRC_DIR) $(SWIG_PY_DIR) -name "*.pyc" -exec rm {} ';'
+	for d in $(SWIG_PY_SRC_DIR) $(SWIG_PY_DIR); \
+	do \
+	  test -e $$d || continue; \
+	  find $$d -name "*.pyc" -exec rm {} ';'; \
+	done
 
 clean-swig-py2:
 	rm -f .swig_py2_checked
@@ -1039,7 +1048,11 @@ clean-swig-py2:
 	do \
 	  [ -d $$d ] && cd $$d && rm -rf *.lo *.la *.o *.pyc .libs || true; \
 	done
-	find $(SWIG_PY2_SRC_DIR) $(SWIG_PY2_DIR) -name "*.pyc" -exec rm {} ';'
+	for d in $(SWIG_PY_SRC_DIR) $(SWIG_PY_DIR); \
+	do \
+	  test -e $$d || continue; \
+	  find $$d -name "*.pyc" -exec rm {} ';'; \
+	done
 
 extraclean-swig-py: clean-swig-py
 	$(EXTRACLEAN_SWIG_PY)
@@ -1073,7 +1086,7 @@ clean-swig-rb:
 	fi
 	for d in $(SWIG_RB_DIR) $(SWIG_RB_DIR)/libsvn_swig_ruby; \
 	do \
-	  cd $$d; \
+	  test -e $$d && cd $$d || continue; \
 	  rm -rf *.lo *.la *.o .libs; \
 	done
 
