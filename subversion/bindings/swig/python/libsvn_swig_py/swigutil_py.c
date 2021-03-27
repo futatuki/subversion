@@ -1784,11 +1784,12 @@ static svn_error_t *type_conversion_error(const char *datatype)
 /*** Editor Wrapping ***/
 
 /* this baton is used for the editor, directory, and file batons. */
-typedef struct svn_swig_py_item_baton_t {
+struct svn_swig_py_item_baton_t
+{
   PyObject *editor;     /* the editor handling the callbacks */
   PyObject *baton;      /* the dir/file baton (or NULL for edit baton) */
   apr_pool_t *pool;     /* top-level pool */
-} svn_swig_py_item_baton_t;
+};
 
 static svn_swig_py_item_baton_t *make_baton(apr_pool_t *pool,
                               PyObject *editor,
@@ -1803,6 +1804,16 @@ static svn_swig_py_item_baton_t *make_baton(apr_pool_t *pool,
   newb->pool = pool;
 
   return newb;
+}
+
+void svn_swig_py_dereference_editor(svn_swig_py_item_baton_t *baton)
+{
+  svn_swig_py_acquire_py_lock();
+  /* Don't clear the pointer even if DEBUG, because this called twice
+     in case of parse_fns3 */
+  Py_XDECREF(baton->editor);
+  svn_swig_py_release_py_lock();
+  return;
 }
 
 static svn_error_t *close_baton(void *baton,
@@ -2299,7 +2310,7 @@ static svn_error_t *abort_edit(void *edit_baton,
 }
 
 void svn_swig_py_make_editor(const svn_delta_editor_t **editor,
-                             void **edit_baton,
+                             svn_swig_py_item_baton_t **edit_baton,
                              PyObject *py_editor,
                              apr_pool_t *pool)
 {
@@ -2689,12 +2700,15 @@ static const svn_repos_parse_fns3_t thunk_parse_fns3_vtable =
 static apr_status_t
 svn_swig_py_parse_fns3_destroy(void *parse_baton)
 {
+  svn_swig_py_item_baton_t *ib = parse_baton;
   close_baton(parse_baton, "_close_dumpstream");
+  /* Now, we all done on parse_baton, we should release "editor" object. */
+  svn_swig_py_dereference_editor(ib);
   return APR_SUCCESS;
 }
 
 void svn_swig_py_make_parse_fns3(const svn_repos_parse_fns3_t **parse_fns3,
-                                 void **parse_baton,
+                                 svn_swig_py_item_baton_t **parse_baton,
                                  PyObject *py_parse_fns3,
                                  apr_pool_t *pool)
 {
@@ -2706,6 +2720,12 @@ void svn_swig_py_make_parse_fns3(const svn_repos_parse_fns3_t **parse_fns3,
      Thus, register a pool clean-up routine to release this parse baton. */
   apr_pool_cleanup_register(pool, *parse_baton, svn_swig_py_parse_fns3_destroy,
                             apr_pool_cleanup_null);
+
+  /* As svn_swig_py_parse_fns3_destroy refers py_parse_fns3 independet of
+     parse_baton as return value, we need one more reference. */
+  Py_INCREF(py_parse_fns3);
+
+  return;
 }
 
 

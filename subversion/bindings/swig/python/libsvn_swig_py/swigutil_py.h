@@ -273,15 +273,21 @@ svn_swig_py_unwrap_struct_ptr(PyObject *source,
                           void *destination,
                           void *baton);
 
+/* this baton is used for the editor, directory, and file batons. */
+typedef struct svn_swig_py_item_baton_t svn_swig_py_item_baton_t;
+
+/* release reference of 'editor' Python object */
+void svn_swig_py_dereference_editor(svn_swig_py_item_baton_t *baton);
+
 /* make an editor that "thunks" from C callbacks up to Python */
 void svn_swig_py_make_editor(const svn_delta_editor_t **editor,
-                             void **edit_baton,
+                             svn_swig_py_item_baton_t **edit_baton,
                              PyObject *py_editor,
                              apr_pool_t *pool);
 
 /* make a parse vtable that "thunks" from C callbacks up to Python */
 void svn_swig_py_make_parse_fns3(const svn_repos_parse_fns3_t **parse_fns3,
-                                 void **parse_baton,
+                                 svn_swig_py_item_baton_t **parse_baton,
                                  PyObject *py_parse_fns3,
                                  apr_pool_t *pool);
 
