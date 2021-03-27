@@ -64,11 +64,29 @@
 */
 
 #ifdef SWIGPYTHON
+/* It is declared in swigutil_py.h and included in svn_global.swg,
+   but it is not for wrapping. So it is need to make a wrapper class */
+%nodefault item_baton;
+%opaque_proxy(item_baton);
+
+%extend item_baton {
+  PyObject * __del__() {
+    svn_swig_py_acquire_py_lock();
+    Py_XDECREF($self->editor);
+    Py_INCREF(Py_None);
+    svn_swig_py_release_py_lock();
+    return Py_None;
+  }
+}
+%apply SWIGTYPE **OUTPARAM {
+  item_baton **edit_baton
+}
+
 /* Make swig wrap this function for us, to allow making an editor in python
    ### There must be a cleaner way to implement this? 
    ### Maybe follow Ruby by wrapping it where passing an editor? */
 void svn_swig_py_make_editor(const svn_delta_editor_t **editor,
-                             void **edit_baton,
+                             item_baton **edit_baton,
                              PyObject *py_editor,
                              apr_pool_t *pool);
 #endif

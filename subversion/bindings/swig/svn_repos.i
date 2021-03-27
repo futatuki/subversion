@@ -160,9 +160,14 @@ svn_error_t *svn_repos_dump_fs2(svn_repos_t *repos,
 
 /* ----------------------------------------------------------------------- */
 #ifdef SWIGPYTHON
+
+%apply SWIGTYPE **OUTPARAM {
+  item_baton **parse_baton
+}
+
 /* Make swig wrap this function for us, to allow making a vtable in python */
 void svn_swig_py_make_parse_fns3(const svn_repos_parse_fns3_t **parse_fns3,
-                                 void **parse_baton,
+                                 item_baton **parse_baton,
                                  PyObject *py_parse_fns3,
                                  apr_pool_t *pool);
 #endif

@@ -1783,13 +1783,6 @@ static svn_error_t *type_conversion_error(const char *datatype)
 
 /*** Editor Wrapping ***/
 
-/* this baton is used for the editor, directory, and file batons. */
-typedef struct item_baton {
-  PyObject *editor;     /* the editor handling the callbacks */
-  PyObject *baton;      /* the dir/file baton (or NULL for edit baton) */
-  apr_pool_t *pool;     /* top-level pool */
-} item_baton;
-
 static item_baton *make_baton(apr_pool_t *pool,
                               PyObject *editor,
                               PyObject *baton)
@@ -2299,7 +2292,7 @@ static svn_error_t *abort_edit(void *edit_baton,
 }
 
 void svn_swig_py_make_editor(const svn_delta_editor_t **editor,
-                             void **edit_baton,
+                             item_baton **edit_baton,
                              PyObject *py_editor,
                              apr_pool_t *pool)
 {
@@ -2694,7 +2687,7 @@ svn_swig_py_parse_fns3_destroy(void *parse_baton)
 }
 
 void svn_swig_py_make_parse_fns3(const svn_repos_parse_fns3_t **parse_fns3,
-                                 void **parse_baton,
+                                 item_baton **parse_baton,
                                  PyObject *py_parse_fns3,
                                  apr_pool_t *pool)
 {
