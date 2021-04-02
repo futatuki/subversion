@@ -1789,8 +1789,9 @@ static item_baton *make_baton(apr_pool_t *pool,
 {
   item_baton *newb = apr_palloc(pool, sizeof(*newb));
 
-  /* Note: We steal the caller's reference to 'baton'. */
-  Py_INCREF(editor);
+  /* Note: We don't count up the references of the Python objects here,
+           we count up them only if we pass the baton to the Python
+           interpreter as a new reference */
   newb->editor = editor;
   newb->baton = baton;
   newb->pool = pool;
@@ -1822,16 +1823,16 @@ static svn_error_t *close_baton(void *baton,
   /* there is no return value, so just toss this object (probably Py_None) */
   Py_DECREF(result);
 
-  /* Release the editor object */
-  Py_DECREF(ib->editor);
+  /* As we only borrow the reference of the editor object, we don't need
+     dereference the editor object */
 
   /* We're now done with the baton. Since there isn't really a free, all
      we need to do is note that its objects are no longer referenced by
      the baton.  */
-  Py_XDECREF(ib->baton);
-
 #ifdef SVN_DEBUG
-  ib->editor = ib->baton = NULL;
+  Py_CLEAR(ib->baton);
+#else
+  Py_XDECREF(ib->baton);
 #endif
 
   err = SVN_NO_ERROR;
@@ -2266,10 +2267,10 @@ static svn_error_t *close_file(void *file_baton,
   /* We're now done with the baton. Since there isn't really a free, all
      we need to do is note that its objects are no longer referenced by
      the baton.  */
-  Py_XDECREF(ib->baton);
-
 #ifdef SVN_DEBUG
-  ib->editor = ib->baton = NULL;
+  Py_CLEAR(ib->baton);
+#else
+  Py_XDECREF(ib->baton);
 #endif
 
   err = SVN_NO_ERROR;
@@ -2315,6 +2316,9 @@ void svn_swig_py_make_editor(const svn_delta_editor_t **editor,
 
   *editor = thunk_editor;
   *edit_baton = make_baton(pool, py_editor, NULL);
+  /* This function is only called by svn.delta.make_editor() via swig wrapper,
+     so we need to count up the reference of the py_editor. */
+  Py_INCREF((*edit_baton)->editor);
 }
 
 
@@ -2693,6 +2697,10 @@ void svn_swig_py_make_parse_fns3(const svn_repos_parse_fns3_t **parse_fns3,
 {
   *parse_fns3 = &thunk_parse_fns3_vtable;
   *parse_baton = make_baton(pool, py_parse_fns3, NULL);
+
+  /* This function is only called by svn.repos.make_parse_fns3() via swig
+     wrapper, so we need to count up the reference of the py_parse_fns3. */
+  Py_INCREF(py_parse_fns3);
 
   /* Dump stream vtable does not provide a method which is called right before
      the end of the parsing (similar to close_edit/abort_edit in delta editor).
