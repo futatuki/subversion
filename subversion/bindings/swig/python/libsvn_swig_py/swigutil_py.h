@@ -280,6 +280,9 @@ typedef struct item_baton {
   apr_pool_t *pool;     /* top-level pool */
 } item_baton;
 
+/* release reference of 'editor' Python object */
+void svn_swig_py_dereference_editor(item_baton *baton);
+
 /* make an editor that "thunks" from C callbacks up to Python */
 void svn_swig_py_make_editor(const svn_delta_editor_t **editor,
                              item_baton **edit_baton,

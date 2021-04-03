@@ -1799,6 +1799,13 @@ static item_baton *make_baton(apr_pool_t *pool,
   return newb;
 }
 
+void svn_swig_py_dereference_editor(item_baton *baton)
+{
+  svn_swig_py_acquire_py_lock();
+  Py_XDECREF(baton->editor);
+  svn_swig_py_release_py_lock();
+}
+
 static svn_error_t *close_baton(void *baton,
                                 const char *method)
 {

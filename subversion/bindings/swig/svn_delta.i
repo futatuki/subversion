@@ -70,14 +70,14 @@
 %opaque_proxy(item_baton);
 
 %extend item_baton {
-  PyObject * __del__() {
-    svn_swig_py_acquire_py_lock();
-    Py_XDECREF($self->editor);
-    Py_INCREF(Py_None);
-    svn_swig_py_release_py_lock();
-    return Py_None;
-  }
+  %pythoncode %{
+    def __del__(self):
+      svn_swig_py_dereference_editor(self)
+  %}
 }
+
+void svn_swig_py_dereference_editor(item_baton *baton);
+
 %apply SWIGTYPE **OUTPARAM {
   item_baton **edit_baton
 }
