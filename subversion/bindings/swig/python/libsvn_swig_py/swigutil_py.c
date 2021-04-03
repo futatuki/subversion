@@ -1803,6 +1803,8 @@ void svn_swig_py_dereference_editor(item_baton *baton)
 {
   svn_swig_py_acquire_py_lock();
   Py_XDECREF(baton->editor);
+  /* Don't clear the pointer even if DEBUG, because this called twice
+     in case of parse_fns3 */
   svn_swig_py_release_py_lock();
 }
 
@@ -2693,7 +2695,9 @@ static const svn_repos_parse_fns3_t thunk_parse_fns3_vtable =
 static apr_status_t
 svn_swig_py_parse_fns3_destroy(void *parse_baton)
 {
+  item_baton *ib = parse_baton;
   close_baton(parse_baton, "_close_dumpstream");
+  svn_swig_py_dereference_editor(ib);
   return APR_SUCCESS;
 }
 
@@ -2707,6 +2711,10 @@ void svn_swig_py_make_parse_fns3(const svn_repos_parse_fns3_t **parse_fns3,
 
   /* This function is only called by svn.repos.make_parse_fns3() via swig
      wrapper, so we need to count up the reference of the py_parse_fns3. */
+  Py_INCREF(py_parse_fns3);
+
+  /* As svn_swig_py_parse_fns3_destroy refers py_parse_fns3 independet of
+     parse_baton, we need one more reference */
   Py_INCREF(py_parse_fns3);
 
   /* Dump stream vtable does not provide a method which is called right before
