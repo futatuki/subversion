@@ -1783,6 +1783,13 @@ static svn_error_t *type_conversion_error(const char *datatype)
 
 /*** Editor Wrapping ***/
 
+struct item_baton
+{
+  PyObject *editor;     /* the editor handling the callbacks */
+  PyObject *baton;      /* the dir/file baton (or NULL for edit baton) */
+  apr_pool_t *pool;     /* top-level pool */
+};
+
 static item_baton *make_baton(apr_pool_t *pool,
                               PyObject *editor,
                               PyObject *baton)

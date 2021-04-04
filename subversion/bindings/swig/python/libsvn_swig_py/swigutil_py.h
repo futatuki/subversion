@@ -274,11 +274,7 @@ svn_swig_py_unwrap_struct_ptr(PyObject *source,
                           void *baton);
 
 /* this baton is used for the editor, directory, and file batons. */
-typedef struct item_baton {
-  PyObject *editor;     /* the editor handling the callbacks */
-  PyObject *baton;      /* the dir/file baton (or NULL for edit baton) */
-  apr_pool_t *pool;     /* top-level pool */
-} item_baton;
+typedef struct item_baton item_baton;
 
 /* release reference of 'editor' Python object */
 void svn_swig_py_dereference_editor(item_baton *baton);
