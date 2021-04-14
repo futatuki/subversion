@@ -1784,17 +1784,17 @@ static svn_error_t *type_conversion_error(const char *datatype)
 /*** Editor Wrapping ***/
 
 /* this baton is used for the editor, directory, and file batons. */
-typedef struct item_baton {
+typedef struct svn_swig_py_item_baton_t {
   PyObject *editor;     /* the editor handling the callbacks */
   PyObject *baton;      /* the dir/file baton (or NULL for edit baton) */
   apr_pool_t *pool;     /* top-level pool */
-} item_baton;
+} svn_swig_py_item_baton_t;
 
-static item_baton *make_baton(apr_pool_t *pool,
+static svn_swig_py_item_baton_t *make_baton(apr_pool_t *pool,
                               PyObject *editor,
                               PyObject *baton)
 {
-  item_baton *newb = apr_palloc(pool, sizeof(*newb));
+  svn_swig_py_item_baton_t *newb = apr_palloc(pool, sizeof(*newb));
 
   /* Note: We steal the caller's reference to 'baton'. */
   Py_INCREF(editor);
@@ -1808,7 +1808,7 @@ static item_baton *make_baton(apr_pool_t *pool,
 static svn_error_t *close_baton(void *baton,
                                 const char *method)
 {
-  item_baton *ib = baton;
+  svn_swig_py_item_baton_t *ib = baton;
   PyObject *result;
   svn_error_t *err;
 
@@ -1852,7 +1852,7 @@ static svn_error_t *set_target_revision(void *edit_baton,
                                         svn_revnum_t target_revision,
                                         apr_pool_t *pool)
 {
-  item_baton *ib = edit_baton;
+  svn_swig_py_item_baton_t *ib = edit_baton;
   PyObject *result;
   svn_error_t *err;
 
@@ -1880,7 +1880,7 @@ static svn_error_t *open_root(void *edit_baton,
                               apr_pool_t *dir_pool,
                               void **root_baton)
 {
-  item_baton *ib = edit_baton;
+  svn_swig_py_item_baton_t *ib = edit_baton;
   PyObject *result;
   svn_error_t *err;
 
@@ -1909,7 +1909,7 @@ static svn_error_t *delete_entry(const char *path,
                                  void *parent_baton,
                                  apr_pool_t *pool)
 {
-  item_baton *ib = parent_baton;
+  svn_swig_py_item_baton_t *ib = parent_baton;
   PyObject *result;
   svn_error_t *err;
 
@@ -1941,7 +1941,7 @@ static svn_error_t *add_directory(const char *path,
                                   apr_pool_t *dir_pool,
                                   void **child_baton)
 {
-  item_baton *ib = parent_baton;
+  svn_swig_py_item_baton_t *ib = parent_baton;
   PyObject *result;
   svn_error_t *err;
 
@@ -1977,7 +1977,7 @@ static svn_error_t *open_directory(const char *path,
                                    apr_pool_t *dir_pool,
                                    void **child_baton)
 {
-  item_baton *ib = parent_baton;
+  svn_swig_py_item_baton_t *ib = parent_baton;
   PyObject *result;
   svn_error_t *err;
 
@@ -2007,7 +2007,7 @@ static svn_error_t *change_dir_prop(void *dir_baton,
                                     const svn_string_t *value,
                                     apr_pool_t *pool)
 {
-  item_baton *ib = dir_baton;
+  svn_swig_py_item_baton_t *ib = dir_baton;
   PyObject *result;
   svn_error_t *err;
 
@@ -2051,7 +2051,7 @@ static svn_error_t *add_file(const char *path,
                              apr_pool_t *file_pool,
                              void **file_baton)
 {
-  item_baton *ib = parent_baton;
+  svn_swig_py_item_baton_t *ib = parent_baton;
   PyObject *result;
   svn_error_t *err;
 
@@ -2088,7 +2088,7 @@ static svn_error_t *open_file(const char *path,
                               apr_pool_t *file_pool,
                               void **file_baton)
 {
-  item_baton *ib = parent_baton;
+  svn_swig_py_item_baton_t *ib = parent_baton;
   PyObject *result;
   svn_error_t *err;
 
@@ -2162,7 +2162,7 @@ static svn_error_t *apply_textdelta(void *file_baton,
                                     svn_txdelta_window_handler_t *handler,
                                     void **h_baton)
 {
-  item_baton *ib = file_baton;
+  svn_swig_py_item_baton_t *ib = file_baton;
   PyObject *result;
   svn_error_t *err;
 
@@ -2212,7 +2212,7 @@ static svn_error_t *change_file_prop(void *file_baton,
                                      const svn_string_t *value,
                                      apr_pool_t *pool)
 {
-  item_baton *ib = file_baton;
+  svn_swig_py_item_baton_t *ib = file_baton;
   PyObject *result;
   svn_error_t *err;
 
@@ -2247,7 +2247,7 @@ static svn_error_t *close_file(void *file_baton,
                                const char *text_checksum,
                                apr_pool_t *pool)
 {
-  item_baton *ib = file_baton;
+  svn_swig_py_item_baton_t *ib = file_baton;
   PyObject *result;
   svn_error_t *err;
 
@@ -2331,7 +2331,7 @@ static svn_error_t *parse_fn3_magic_header_record(int version,
                                                   void *parse_baton,
                                                   apr_pool_t *pool)
 {
-  item_baton *ib = parse_baton;
+  svn_swig_py_item_baton_t *ib = parse_baton;
   PyObject *result;
   svn_error_t *err;
 
@@ -2360,7 +2360,7 @@ static svn_error_t *parse_fn3_uuid_record(const char *uuid,
                                           void *parse_baton,
                                           apr_pool_t *pool)
 {
-  item_baton *ib = parse_baton;
+  svn_swig_py_item_baton_t *ib = parse_baton;
   PyObject *result;
   svn_error_t *err;
 
@@ -2390,7 +2390,7 @@ static svn_error_t *parse_fn3_new_revision_record(void **revision_baton,
                                                   void *parse_baton,
                                                   apr_pool_t *pool)
 {
-  item_baton *ib = parse_baton;
+  svn_swig_py_item_baton_t *ib = parse_baton;
   PyObject *result;
   PyObject *tmp;
   svn_error_t *err;
@@ -2420,7 +2420,7 @@ static svn_error_t *parse_fn3_new_node_record(void **node_baton,
                                               void *revision_baton,
                                               apr_pool_t *pool)
 {
-  item_baton *ib = revision_baton;
+  svn_swig_py_item_baton_t *ib = revision_baton;
   PyObject *result;
   svn_error_t *err;
 
@@ -2449,7 +2449,7 @@ static svn_error_t *parse_fn3_set_revision_property(void *revision_baton,
                                                     const char *name,
                                                     const svn_string_t *value)
 {
-  item_baton *ib = revision_baton;
+  svn_swig_py_item_baton_t *ib = revision_baton;
   PyObject *result;
   svn_error_t *err;
 
@@ -2485,7 +2485,7 @@ static svn_error_t *parse_fn3_set_node_property(void *node_baton,
                                                 const char *name,
                                                 const svn_string_t *value)
 {
-  item_baton *ib = node_baton;
+  svn_swig_py_item_baton_t *ib = node_baton;
   PyObject *result;
   svn_error_t *err;
 
@@ -2520,7 +2520,7 @@ static svn_error_t *parse_fn3_set_node_property(void *node_baton,
 static svn_error_t *parse_fn3_delete_node_property(void *node_baton,
                                                    const char *name)
 {
-  item_baton *ib = node_baton;
+  svn_swig_py_item_baton_t *ib = node_baton;
   PyObject *result;
   svn_error_t *err;
 
@@ -2547,7 +2547,7 @@ static svn_error_t *parse_fn3_delete_node_property(void *node_baton,
 
 static svn_error_t *parse_fn3_remove_node_props(void *node_baton)
 {
-  item_baton *ib = node_baton;
+  svn_swig_py_item_baton_t *ib = node_baton;
   PyObject *result;
   svn_error_t *err;
 
@@ -2574,7 +2574,7 @@ static svn_error_t *parse_fn3_remove_node_props(void *node_baton)
 static svn_error_t *parse_fn3_set_fulltext(svn_stream_t **stream,
                                            void *node_baton)
 {
-  item_baton *ib = node_baton;
+  svn_swig_py_item_baton_t *ib = node_baton;
   PyObject *result = NULL;
   svn_error_t *err = SVN_NO_ERROR;
 
@@ -2618,7 +2618,7 @@ static svn_error_t *parse_fn3_apply_textdelta(svn_txdelta_window_handler_t *hand
                                               void **handler_baton,
                                               void *node_baton)
 {
-  item_baton *ib = node_baton;
+  svn_swig_py_item_baton_t *ib = node_baton;
   PyObject *result;
   svn_error_t *err;
 
