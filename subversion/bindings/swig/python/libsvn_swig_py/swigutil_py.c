@@ -1786,25 +1786,91 @@ static svn_error_t *type_conversion_error(const char *datatype)
 /* this baton is used for the editor, directory, and file batons. */
 struct svn_swig_py_item_baton_t
 {
-  PyObject *editor;     /* the editor handling the callbacks */
-  PyObject *baton;      /* the dir/file baton (or NULL for edit baton) */
-  apr_pool_t *pool;     /* top-level pool */
+  PyObject *editor;         /* the editor handling the callbacks */
+  PyObject *baton;          /* the dir/file baton entity */
+  apr_pool_t *pool;         /* top-level pool */
+  svn_swig_py_item_baton_t *anc;
+                            /* ancestor editor baton; if NULL, it is itself */
+  union
+    {
+      struct
+        {
+          svn_swig_py_item_baton_t *dec;  /* live decendant batons list */
+        } a;                /* ancestor editor baton members */
+      struct
+        {
+          svn_swig_py_item_baton_t *prev; /* previous link of "live"
+                                             decendant batons */
+          svn_swig_py_item_baton_t *next; /* next link     of "live"
+                                             decendant batons */
+        } d;                /* decendant baton's members */
+    } u;
 };
 
-static svn_swig_py_item_baton_t *make_baton(apr_pool_t *pool,
-                              PyObject *editor,
-                              PyObject *baton)
+static svn_swig_py_item_baton_t *
+make_editor_baton(apr_pool_t *pool, PyObject *editor)
 {
   svn_swig_py_item_baton_t *newb = apr_palloc(pool, sizeof(*newb));
 
-  /* Note: We don't count up the references of the Python objects here,
-           we count up them only if we pass the baton to the Python
-           interpreter as a new reference */
+  svn_swig_py_acquire_py_lock();
+
+  /* Note: We count up the references of the Python objects here, because
+           this baton is returned as a return value of delta.make_editor
+           or repos.make_parse_fns3. */
+  Py_INCREF(editor);
   newb->editor = editor;
-  newb->baton = baton;
+  newb->baton = NULL;
   newb->pool = pool;
+  newb->anc = NULL;
+  newb->u.a.dec = NULL;
+
+  svn_swig_py_release_py_lock();
 
   return newb;
+}
+
+static svn_swig_py_item_baton_t *
+make_baton(apr_pool_t *pool, svn_swig_py_item_baton_t *editor_baton,
+           PyObject *baton)
+{
+  svn_swig_py_item_baton_t *newb = apr_palloc(pool, sizeof(*newb));
+
+  newb->editor = editor_baton->editor;
+  newb->baton = baton;
+  newb->pool = pool;
+  newb->anc = editor_baton;
+  newb->u.d.prev = NULL;
+  newb->u.d.next = editor_baton->u.a.dec;
+  if (newb->u.d.next != NULL)
+    {
+      newb->u.d.next->u.d.prev = newb;
+    }
+  editor_baton->u.a.dec = newb;
+
+  return newb;
+}
+
+static void
+release_baton(svn_swig_py_item_baton_t *baton)
+{
+  Py_CLEAR(baton->baton);
+
+  /* Remove the baton from the 'live' baton list */
+  if (baton->u.d.prev != NULL)
+    {
+      baton->u.d.prev->u.d.next = baton->u.d.next;
+    }
+  else
+    {
+      /* It should be (baton->anc->u.a.dec == baton) */
+      baton->anc->u.a.dec = baton->u.d.next;
+    }
+  if (baton->u.d.next != NULL)
+    {
+      baton->u.d.next->u.d.prev = baton->u.d.prev;
+    }
+
+  return;
 }
 
 void svn_swig_py_dereference_editor(svn_swig_py_item_baton_t *baton)
@@ -1813,6 +1879,12 @@ void svn_swig_py_dereference_editor(svn_swig_py_item_baton_t *baton)
   /* Don't clear the pointer even if DEBUG, because this called twice
      in case of parse_fns3 */
   Py_XDECREF(baton->editor);
+  /* The last chance to release Python objects in decendant batons */
+  while (baton->u.a.dec != NULL)
+    {
+      release_baton(baton->u.a.dec);
+    }
+
   svn_swig_py_release_py_lock();
   return;
 }
@@ -1835,27 +1907,20 @@ static svn_error_t *close_baton(void *baton,
                                     ib->baton)) == NULL)
     {
       err = callback_exception_error();
-      goto finished;
+    }
+  else
+    {
+      /* there is no return value, so just toss this object
+         (probably Py_None) */
+      Py_DECREF(result);
+      err = SVN_NO_ERROR;
     }
 
-  /* there is no return value, so just toss this object (probably Py_None) */
-  Py_DECREF(result);
+  /* We're now done with the baton, whether error is occured or not.
+    if Since there isn't really a free, all we need to do is note that
+    its objects are no longer referenced by the baton.  */
+  release_baton(ib);
 
-  /* As we only borrow the reference of the editor object, we don't need
-     dereference the editor object */
-
-  /* We're now done with the baton. Since there isn't really a free, all
-     we need to do is note that its objects are no longer referenced by
-     the baton.  */
-#ifdef SVN_DEBUG
-  Py_CLEAR(ib->baton);
-#else
-  Py_XDECREF(ib->baton);
-#endif
-
-  err = SVN_NO_ERROR;
-
- finished:
   svn_swig_py_release_py_lock();
   return err;
 }
@@ -1908,7 +1973,7 @@ static svn_error_t *open_root(void *edit_baton,
     }
 
   /* make_baton takes our 'result' reference */
-  *root_baton = make_baton(dir_pool, ib->editor, result);
+  *root_baton = make_baton(dir_pool, ib, result);
   err = SVN_NO_ERROR;
 
  finished:
@@ -1975,7 +2040,7 @@ static svn_error_t *add_directory(const char *path,
     }
 
   /* make_baton takes our 'result' reference */
-  *child_baton = make_baton(dir_pool, ib->editor, result);
+  *child_baton = make_baton(dir_pool, ib->anc, result);
   err = SVN_NO_ERROR;
 
  finished:
@@ -2006,7 +2071,7 @@ static svn_error_t *open_directory(const char *path,
     }
 
   /* make_baton takes our 'result' reference */
-  *child_baton = make_baton(dir_pool, ib->editor, result);
+  *child_baton = make_baton(dir_pool, ib->anc, result);
   err = SVN_NO_ERROR;
 
  finished:
@@ -2085,7 +2150,7 @@ static svn_error_t *add_file(const char *path,
     }
 
   /* make_baton takes our 'result' reference */
-  *file_baton = make_baton(file_pool, ib->editor, result);
+  *file_baton = make_baton(file_pool, ib->anc, result);
 
   err = SVN_NO_ERROR;
 
@@ -2117,7 +2182,7 @@ static svn_error_t *open_file(const char *path,
     }
 
   /* make_baton takes our 'result' reference */
-  *file_baton = make_baton(file_pool, ib->editor, result);
+  *file_baton = make_baton(file_pool, ib->anc, result);
   err = SVN_NO_ERROR;
 
  finished:
@@ -2155,6 +2220,12 @@ static svn_error_t *window_handler(svn_txdelta_window_t *window,
 
   if (result == NULL)
     {
+      if (window != NULL)
+        {
+          /* This turned out to be the last call, but not released
+             the handler object yet */
+          Py_DECREF(handler);
+        }
       err = callback_exception_error();
       goto finished;
     }
@@ -2275,6 +2346,9 @@ static svn_error_t *close_file(void *file_baton,
                                     ib->baton,
                                     text_checksum)) == NULL)
     {
+      /* In case of error, there would not be another chance to release
+         this file baton, except abort_edit call.  */
+      release_baton(ib);
       err = callback_exception_error();
       goto finished;
     }
@@ -2285,11 +2359,7 @@ static svn_error_t *close_file(void *file_baton,
   /* We're now done with the baton. Since there isn't really a free, all
      we need to do is note that its objects are no longer referenced by
      the baton.  */
-#ifdef SVN_DEBUG
-  Py_CLEAR(ib->baton);
-#else
-  Py_XDECREF(ib->baton);
-#endif
+  release_baton(ib);
 
   err = SVN_NO_ERROR;
 
@@ -2298,16 +2368,56 @@ static svn_error_t *close_file(void *file_baton,
   return err;
 }
 
+static svn_error_t *close_edit_baton(void *baton,
+                                const char *method)
+{
+  svn_swig_py_item_baton_t *ib = baton;
+  PyObject *result;
+  svn_error_t *err;
+
+  svn_swig_py_acquire_py_lock();
+
+  /* ### python doesn't have 'const' on the method name and format */
+  if ((result = PyObject_CallMethod(ib->editor, (char *)method,
+                                    NULL, NULL)) == NULL)
+    {
+      err = callback_exception_error();
+    }
+  else
+    {
+      /* there is no return value, so just toss this object
+         (probably Py_None) */
+      Py_DECREF(result);
+      err = SVN_NO_ERROR;
+    }
+
+  /* As we only borrow the reference of the editor object, we don't need
+     dereference the editor object */
+
+  /* We're now done with all batons. If we still have unreleased batons,
+     we should release their references of Python objects. */
+  while (ib->u.a.dec != NULL)
+    {
+      release_baton(ib->u.a.dec);
+    }
+
+  svn_swig_py_release_py_lock();
+  return err;
+}
+
 static svn_error_t *close_edit(void *edit_baton,
                                apr_pool_t *pool)
 {
-  return close_baton(edit_baton, "close_edit");
+  svn_swig_py_item_baton_t *ib = edit_baton;
+  /* It should be ib->u.a.dec == NULL */
+  return close_edit_baton(ib, "close_edit");
 }
 
 static svn_error_t *abort_edit(void *edit_baton,
                                apr_pool_t *pool)
 {
-  return close_baton(edit_baton, "abort_edit");
+  svn_swig_py_item_baton_t *ib = edit_baton;
+  return close_edit_baton(ib, "abort_edit");
 }
 
 void svn_swig_py_make_editor(const svn_delta_editor_t **editor,
@@ -2333,10 +2443,8 @@ void svn_swig_py_make_editor(const svn_delta_editor_t **editor,
   thunk_editor->abort_edit = abort_edit;
 
   *editor = thunk_editor;
-  *edit_baton = make_baton(pool, py_editor, NULL);
-  /* This function is only called by svn.delta.make_editor() via swig wrapper,
-     so we need to count up the reference of the py_editor. */
-  Py_INCREF((*edit_baton)->editor);
+  *edit_baton = make_editor_baton(pool, py_editor);
+  return;
 }
 
 
@@ -2421,7 +2529,7 @@ static svn_error_t *parse_fn3_new_revision_record(void **revision_baton,
     }
 
   /* make_baton takes our 'result' reference */
-  *revision_baton = make_baton(pool, ib->editor, result);
+  *revision_baton = make_baton(pool, ib, result);
   err = SVN_NO_ERROR;
 
  finished:
@@ -2451,7 +2559,7 @@ static svn_error_t *parse_fn3_new_node_record(void **node_baton,
     }
 
   /* make_baton takes our 'result' reference */
-  *node_baton = make_baton(pool, ib->editor, result);
+  *node_baton = make_baton(pool, ib->anc, result);
   err = SVN_NO_ERROR;
 
  finished:
@@ -2705,7 +2813,11 @@ static apr_status_t
 svn_swig_py_parse_fns3_destroy(void *parse_baton)
 {
   svn_swig_py_item_baton_t *ib = parse_baton;
-  close_baton(parse_baton, "_close_dumpstream");
+
+  /* Idealy, we hope (ib->u.a.dec == NULL) here, however it is not so
+     when error is occured during the call back processing...  */
+  close_edit_baton(ib, "_close_dumpstream");
+
   /* Now, we all done on parse_baton, we should release "editor" object. */
   svn_swig_py_dereference_editor(ib);
   return APR_SUCCESS;
@@ -2717,11 +2829,7 @@ void svn_swig_py_make_parse_fns3(const svn_repos_parse_fns3_t **parse_fns3,
                                  apr_pool_t *pool)
 {
   *parse_fns3 = &thunk_parse_fns3_vtable;
-  *parse_baton = make_baton(pool, py_parse_fns3, NULL);
-
-  /* This function is only called by svn.repos.make_parse_fns3() via swig
-     wrapper, so we need to count up the reference of the py_parse_fns3. */
-  Py_INCREF(py_parse_fns3);
+  *parse_baton = make_editor_baton(pool, py_parse_fns3);
 
   /* Dump stream vtable does not provide a method which is called right before
      the end of the parsing (similar to close_edit/abort_edit in delta editor).
