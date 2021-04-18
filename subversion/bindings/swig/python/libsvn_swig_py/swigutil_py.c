@@ -1843,16 +1843,6 @@ static child_baton_t *make_baton(apr_pool_t *pool,
   return newb;
 }
 
-void svn_swig_py_dereference_editor(svn_swig_py_item_baton_t *baton)
-{
-  svn_swig_py_acquire_py_lock();
-  /* Don't clear the pointer even if DEBUG, because this called twice
-     in case of parse_fns3 */
-  Py_XDECREF(baton->editor);
-  svn_swig_py_release_py_lock();
-  return;
-}
-
 static void release_baton(child_baton_t *baton)
 {
   Py_CLEAR(baton->baton);
@@ -1869,6 +1859,22 @@ static void release_baton(child_baton_t *baton)
     {
       baton->next->prev = baton->prev;
     }
+  return;
+}
+
+void svn_swig_py_dereference_editor(svn_swig_py_item_baton_t *baton)
+{
+  svn_swig_py_acquire_py_lock();
+  /* Don't clear the pointer even if DEBUG, because this called twice
+     in case of parse_fns3 */
+  Py_XDECREF(baton->editor);
+  /* The last chance to release Python objects in decendant batons */
+  while (baton->children != NULL)
+    {
+      release_baton(baton->children);
+    }
+
+  svn_swig_py_release_py_lock();
   return;
 }
 
