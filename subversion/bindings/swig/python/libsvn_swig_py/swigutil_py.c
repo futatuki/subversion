@@ -1783,28 +1783,32 @@ static svn_error_t *type_conversion_error(const char *datatype)
 
 /*** Editor Wrapping ***/
 
-/* forward reference for svn_swig_py_item_baton_t */
-typedef struct child_baton_t child_baton_t;
-
 /* this baton is used for the editor, directory, and file batons. */
 struct svn_swig_py_item_baton_t
 {
   PyObject *editor;         /* the editor handling the callbacks */
-  child_baton_t *children;  /* the dir/file batons  */
-  apr_pool_t *pool;         /* top-level pool */
-};
-
-struct child_baton_t
-{
-  svn_swig_py_item_baton_t *editor_baton; /* editor baton */
   PyObject *baton;          /* the dir/file baton entity */
-  apr_pool_t *pool;         /* a pool for this baton */
-  child_baton_t *prev;      /* previous link of "live" child batons */
-  child_baton_t *next;      /* next     link of "live" child batons */
+  apr_pool_t *pool;         /* top-level pool */
+  svn_swig_py_item_baton_t *anc;
+                            /* ancestor editor baton; if NULL, it is itself */
+  union
+    {
+      struct
+        {
+          svn_swig_py_item_baton_t *dec;  /* live decendant batons list */
+        } a;                /* ancestor editor baton members */
+      struct
+        {
+          svn_swig_py_item_baton_t *prev; /* previous link of "live"
+                                             decendant batons */
+          svn_swig_py_item_baton_t *next; /* next link     of "live"
+                                             decendant batons */
+        } d;                /* decendant baton's members */
+    } u;
 };
 
-static svn_swig_py_item_baton_t *make_editor_baton(apr_pool_t *pool,
-                                                   PyObject *editor)
+static svn_swig_py_item_baton_t *
+make_editor_baton(apr_pool_t *pool, PyObject *editor)
 {
   svn_swig_py_item_baton_t *newb = apr_palloc(pool, sizeof(*newb));
 
@@ -1815,50 +1819,57 @@ static svn_swig_py_item_baton_t *make_editor_baton(apr_pool_t *pool,
            or repos.make_parse_fns3. */
   Py_INCREF(editor);
   newb->editor = editor;
-  newb->children = NULL;
+  newb->baton = NULL;
   newb->pool = pool;
+  newb->anc = NULL;
+  newb->u.a.dec = NULL;
 
   svn_swig_py_release_py_lock();
 
   return newb;
 }
 
-static child_baton_t *make_baton(apr_pool_t *pool,
-                                svn_swig_py_item_baton_t *editor_baton,
-                                PyObject *baton)
+static svn_swig_py_item_baton_t *
+make_baton(apr_pool_t *pool, svn_swig_py_item_baton_t *editor_baton,
+           PyObject *baton)
 {
-  child_baton_t *newb = apr_palloc(pool, sizeof(*newb));
+  svn_swig_py_item_baton_t *newb = apr_palloc(pool, sizeof(*newb));
 
-  newb->editor_baton = editor_baton;
+  newb->editor = editor_baton->editor;
   newb->baton = baton;
   newb->pool = pool;
-  newb->prev = NULL;
-  newb->next = editor_baton->children;
-  if (newb->next != NULL)
+  newb->anc = editor_baton;
+  newb->u.d.prev = NULL;
+  newb->u.d.next = editor_baton->u.a.dec;
+  if (newb->u.d.next != NULL)
     {
-      newb->next->prev = newb;
+      newb->u.d.next->u.d.prev = newb;
     }
-  editor_baton->children = newb;
+  editor_baton->u.a.dec = newb;
 
   return newb;
 }
 
-static void release_baton(child_baton_t *baton)
+static void
+release_baton(svn_swig_py_item_baton_t *baton)
 {
   Py_CLEAR(baton->baton);
-  if (baton->prev != NULL)
+
+  /* Remove the baton from the 'live' baton list */
+  if (baton->u.d.prev != NULL)
     {
-      baton->prev->next = baton->next;
+      baton->u.d.prev->u.d.next = baton->u.d.next;
     }
   else
     {
-      /* It should be (baton->editor_baton->children == baton) */
-      baton->editor_baton->children = baton->next;
+      /* It should be (baton->anc->u.a.dec == baton) */
+      baton->anc->u.a.dec = baton->u.d.next;
     }
-  if (baton->next != NULL)
+  if (baton->u.d.next != NULL)
     {
-      baton->next->prev = baton->prev;
+      baton->u.d.next->u.d.prev = baton->u.d.prev;
     }
+
   return;
 }
 
@@ -1869,9 +1880,9 @@ void svn_swig_py_dereference_editor(svn_swig_py_item_baton_t *baton)
      in case of parse_fns3 */
   Py_XDECREF(baton->editor);
   /* The last chance to release Python objects in decendant batons */
-  while (baton->children != NULL)
+  while (baton->u.a.dec != NULL)
     {
-      release_baton(baton->children);
+      release_baton(baton->u.a.dec);
     }
 
   svn_swig_py_release_py_lock();
@@ -1881,8 +1892,7 @@ void svn_swig_py_dereference_editor(svn_swig_py_item_baton_t *baton)
 static svn_error_t *close_baton(void *baton,
                                 const char *method)
 {
-  child_baton_t *cb = baton;
-  PyObject *editor = cb->editor_baton->editor;
+  svn_swig_py_item_baton_t *ib = baton;
   PyObject *result;
   svn_error_t *err;
 
@@ -1892,9 +1902,9 @@ static svn_error_t *close_baton(void *baton,
      not bother to pass an object. Note that we still shove a NULL onto
      the stack, but the format specified just won't reference it.  */
   /* ### python doesn't have 'const' on the method name and format */
-  if ((result = PyObject_CallMethod(editor, (char *)method,
-                                    cb->baton ? (char *)"(O)" : NULL,
-                                    cb->baton)) == NULL)
+  if ((result = PyObject_CallMethod(ib->editor, (char *)method,
+                                    ib->baton ? (char *)"(O)" : NULL,
+                                    ib->baton)) == NULL)
     {
       err = callback_exception_error();
     }
@@ -1909,7 +1919,7 @@ static svn_error_t *close_baton(void *baton,
   /* We're now done with the baton, whether error is occured or not.
     if Since there isn't really a free, all we need to do is note that
     its objects are no longer referenced by the baton.  */
-  release_baton(cb);
+  release_baton(ib);
 
   svn_swig_py_release_py_lock();
   return err;
@@ -1976,17 +1986,16 @@ static svn_error_t *delete_entry(const char *path,
                                  void *parent_baton,
                                  apr_pool_t *pool)
 {
-  child_baton_t *cb = parent_baton;
-  PyObject *editor = cb->editor_baton->editor;
+  svn_swig_py_item_baton_t *ib = parent_baton;
   PyObject *result;
   svn_error_t *err;
 
   svn_swig_py_acquire_py_lock();
 
   /* ### python doesn't have 'const' on the method name and format */
-  if ((result = PyObject_CallMethod(editor, (char *)"delete_entry",
+  if ((result = PyObject_CallMethod(ib->editor, (char *)"delete_entry",
                                     (char *)SVN_SWIG_BYTES_FMT "lOO&",
-                                    path, revision, cb->baton,
+                                    path, revision, ib->baton,
                                     make_ob_pool, pool)) == NULL)
     {
       err = callback_exception_error();
@@ -2009,21 +2018,20 @@ static svn_error_t *add_directory(const char *path,
                                   apr_pool_t *dir_pool,
                                   void **child_baton)
 {
-  child_baton_t *cb = parent_baton;
-  PyObject *editor = cb->editor_baton->editor;
+  svn_swig_py_item_baton_t *ib = parent_baton;
   PyObject *result;
   svn_error_t *err;
 
   svn_swig_py_acquire_py_lock();
 
   /* ### python doesn't have 'const' on the method name and format */
-  if ((result = PyObject_CallMethod(editor, (char *)"add_directory",
+  if ((result = PyObject_CallMethod(ib->editor, (char *)"add_directory",
 #if IS_PY3
                                     (char *)"yOylO&",
 #else
                                     (char *)"sOslO&",
 #endif
-                                    path, cb->baton,
+                                    path, ib->baton,
                                     copyfrom_path, copyfrom_revision,
                                     make_ob_pool, dir_pool)) == NULL)
     {
@@ -2032,7 +2040,7 @@ static svn_error_t *add_directory(const char *path,
     }
 
   /* make_baton takes our 'result' reference */
-  *child_baton = make_baton(dir_pool, cb->editor_baton, result);
+  *child_baton = make_baton(dir_pool, ib->anc, result);
   err = SVN_NO_ERROR;
 
  finished:
@@ -2046,17 +2054,16 @@ static svn_error_t *open_directory(const char *path,
                                    apr_pool_t *dir_pool,
                                    void **child_baton)
 {
-  child_baton_t *cb = parent_baton;
-  PyObject *editor = cb->editor_baton->editor;
+  svn_swig_py_item_baton_t *ib = parent_baton;
   PyObject *result;
   svn_error_t *err;
 
   svn_swig_py_acquire_py_lock();
 
   /* ### python doesn't have 'const' on the method name and format */
-  if ((result = PyObject_CallMethod(editor, (char *)"open_directory",
+  if ((result = PyObject_CallMethod(ib->editor, (char *)"open_directory",
                                     (char *)SVN_SWIG_BYTES_FMT "OlO&",
-                                    path, cb->baton, base_revision,
+                                    path, ib->baton, base_revision,
                                     make_ob_pool, dir_pool)) == NULL)
     {
       err = callback_exception_error();
@@ -2064,7 +2071,7 @@ static svn_error_t *open_directory(const char *path,
     }
 
   /* make_baton takes our 'result' reference */
-  *child_baton = make_baton(dir_pool, cb->editor_baton, result);
+  *child_baton = make_baton(dir_pool, ib->anc, result);
   err = SVN_NO_ERROR;
 
  finished:
@@ -2077,21 +2084,20 @@ static svn_error_t *change_dir_prop(void *dir_baton,
                                     const svn_string_t *value,
                                     apr_pool_t *pool)
 {
-  child_baton_t *cb = dir_baton;
-  PyObject *editor = cb->editor_baton->editor;
+  svn_swig_py_item_baton_t *ib = dir_baton;
   PyObject *result;
   svn_error_t *err;
 
   svn_swig_py_acquire_py_lock();
 
   /* ### python doesn't have 'const' on the method name and format */
-  if ((result = PyObject_CallMethod(editor, (char *)"change_dir_prop",
+  if ((result = PyObject_CallMethod(ib->editor, (char *)"change_dir_prop",
 #if IS_PY3
                                     (char *)"Oyy#O&",
 #else
                                     (char *)"Oss#O&",
 #endif
-                                    cb->baton, name,
+                                    ib->baton, name,
                                     value ? value->data : NULL,
                                     (Py_ssize_t) (value ? value->len : 0),
                                     make_ob_pool, pool)) == NULL)
@@ -2122,21 +2128,20 @@ static svn_error_t *add_file(const char *path,
                              apr_pool_t *file_pool,
                              void **file_baton)
 {
-  child_baton_t *cb = parent_baton;
-  PyObject *editor = cb->editor_baton->editor;
+  svn_swig_py_item_baton_t *ib = parent_baton;
   PyObject *result;
   svn_error_t *err;
 
   svn_swig_py_acquire_py_lock();
 
   /* ### python doesn't have 'const' on the method name and format */
-  if ((result = PyObject_CallMethod(editor, (char *)"add_file",
+  if ((result = PyObject_CallMethod(ib->editor, (char *)"add_file",
 #if IS_PY3
                                     (char *)"yOylO&",
 #else
                                     (char *)"sOslO&",
 #endif
-                                    path, cb->baton,
+                                    path, ib->baton,
                                     copyfrom_path, copyfrom_revision,
                                     make_ob_pool, file_pool)) == NULL)
     {
@@ -2145,7 +2150,7 @@ static svn_error_t *add_file(const char *path,
     }
 
   /* make_baton takes our 'result' reference */
-  *file_baton = make_baton(file_pool, cb->editor_baton, result);
+  *file_baton = make_baton(file_pool, ib->anc, result);
 
   err = SVN_NO_ERROR;
 
@@ -2160,17 +2165,16 @@ static svn_error_t *open_file(const char *path,
                               apr_pool_t *file_pool,
                               void **file_baton)
 {
-  child_baton_t *cb = parent_baton;
-  PyObject *editor = cb->editor_baton->editor;
+  svn_swig_py_item_baton_t *ib = parent_baton;
   PyObject *result;
   svn_error_t *err;
 
   svn_swig_py_acquire_py_lock();
 
   /* ### python doesn't have 'const' on the method name and format */
-  if ((result = PyObject_CallMethod(editor, (char *)"open_file",
+  if ((result = PyObject_CallMethod(ib->editor, (char *)"open_file",
                                     (char *)SVN_SWIG_BYTES_FMT "OlO&",
-                                    path, cb->baton, base_revision,
+                                    path, ib->baton, base_revision,
                                     make_ob_pool, file_pool)) == NULL)
     {
       err = callback_exception_error();
@@ -2178,7 +2182,7 @@ static svn_error_t *open_file(const char *path,
     }
 
   /* make_baton takes our 'result' reference */
-  *file_baton = make_baton(file_pool, cb->editor_baton, result);
+  *file_baton = make_baton(file_pool, ib->anc, result);
   err = SVN_NO_ERROR;
 
  finished:
@@ -2241,21 +2245,20 @@ static svn_error_t *apply_textdelta(void *file_baton,
                                     svn_txdelta_window_handler_t *handler,
                                     void **h_baton)
 {
-  child_baton_t *cb = file_baton;
-  PyObject *editor = cb->editor_baton->editor;
+  svn_swig_py_item_baton_t *ib = file_baton;
   PyObject *result;
   svn_error_t *err;
 
   svn_swig_py_acquire_py_lock();
 
   /* ### python doesn't have 'const' on the method name and format */
-  if ((result = PyObject_CallMethod(editor, (char *)"apply_textdelta",
+  if ((result = PyObject_CallMethod(ib->editor, (char *)"apply_textdelta",
 #if IS_PY3
                                     (char *)"(Oy)",
 #else
                                     (char *)"(Os)",
 #endif
-                                    cb->baton,
+                                    ib->baton,
                                     base_checksum)) == NULL)
     {
       err = callback_exception_error();
@@ -2292,21 +2295,20 @@ static svn_error_t *change_file_prop(void *file_baton,
                                      const svn_string_t *value,
                                      apr_pool_t *pool)
 {
-  child_baton_t *cb = file_baton;
-  PyObject *editor = cb->editor_baton->editor;
+  svn_swig_py_item_baton_t *ib = file_baton;
   PyObject *result;
   svn_error_t *err;
 
   svn_swig_py_acquire_py_lock();
 
   /* ### python doesn't have 'const' on the method name and format */
-  if ((result = PyObject_CallMethod(editor, (char *)"change_file_prop",
+  if ((result = PyObject_CallMethod(ib->editor, (char *)"change_file_prop",
 #if IS_PY3
                                     (char *)"Oyy#O&",
 #else
                                     (char *)"Oss#O&",
 #endif
-                                    cb->baton, name,
+                                    ib->baton, name,
                                     value ? value->data : NULL,
                                     (Py_ssize_t) (value ? value->len : 0),
                                     make_ob_pool, pool)) == NULL)
@@ -2328,26 +2330,25 @@ static svn_error_t *close_file(void *file_baton,
                                const char *text_checksum,
                                apr_pool_t *pool)
 {
-  child_baton_t *cb = file_baton;
-  PyObject *editor = cb->editor_baton->editor;
+  svn_swig_py_item_baton_t *ib = file_baton;
   PyObject *result;
   svn_error_t *err;
 
   svn_swig_py_acquire_py_lock();
 
   /* ### python doesn't have 'const' on the method name and format */
-  if ((result = PyObject_CallMethod(editor, (char *)"close_file",
+  if ((result = PyObject_CallMethod(ib->editor, (char *)"close_file",
 #if IS_PY3
                                     (char *)"(Oy)",
 #else
                                     (char *)"(Os)",
 #endif
-                                    cb->baton,
+                                    ib->baton,
                                     text_checksum)) == NULL)
     {
       /* In case of error, there would not be another chance to release
          this file baton, except abort_edit call.  */
-      release_baton(cb);
+      release_baton(ib);
       err = callback_exception_error();
       goto finished;
     }
@@ -2358,7 +2359,7 @@ static svn_error_t *close_file(void *file_baton,
   /* We're now done with the baton. Since there isn't really a free, all
      we need to do is note that its objects are no longer referenced by
      the baton.  */
-  release_baton(cb);
+  release_baton(ib);
 
   err = SVN_NO_ERROR;
 
@@ -2371,15 +2372,13 @@ static svn_error_t *close_edit_baton(void *baton,
                                 const char *method)
 {
   svn_swig_py_item_baton_t *ib = baton;
-  PyObject *editor = ib->editor;
   PyObject *result;
   svn_error_t *err;
-  child_baton_t *cb;
 
   svn_swig_py_acquire_py_lock();
 
   /* ### python doesn't have 'const' on the method name and format */
-  if ((result = PyObject_CallMethod(editor, (char *)method,
+  if ((result = PyObject_CallMethod(ib->editor, (char *)method,
                                     NULL, NULL)) == NULL)
     {
       err = callback_exception_error();
@@ -2397,9 +2396,9 @@ static svn_error_t *close_edit_baton(void *baton,
 
   /* We're now done with all batons. If we still have unreleased batons,
      we should release their references of Python objects. */
-  while (ib->children != NULL)
+  while (ib->u.a.dec != NULL)
     {
-      release_baton(ib->children);
+      release_baton(ib->u.a.dec);
     }
 
   svn_swig_py_release_py_lock();
@@ -2410,7 +2409,7 @@ static svn_error_t *close_edit(void *edit_baton,
                                apr_pool_t *pool)
 {
   svn_swig_py_item_baton_t *ib = edit_baton;
-  /* It should be ib->children == NULL */
+  /* It should be ib->u.a.dec == NULL */
   return close_edit_baton(ib, "close_edit");
 }
 
@@ -2544,24 +2543,23 @@ static svn_error_t *parse_fn3_new_node_record(void **node_baton,
                                               void *revision_baton,
                                               apr_pool_t *pool)
 {
-  child_baton_t *cb = revision_baton;
-  PyObject *editor = cb->editor_baton->editor;
+  svn_swig_py_item_baton_t *ib = revision_baton;
   PyObject *result;
   svn_error_t *err;
 
   svn_swig_py_acquire_py_lock();
 
-  if ((result = PyObject_CallMethod(editor, (char *)"new_node_record",
+  if ((result = PyObject_CallMethod(ib->editor, (char *)"new_node_record",
                                    (char *)"O&OO&",
                                    svn_swig_py_stringhash_to_dict, headers,
-                                   cb->baton,
+                                   ib->baton,
                                    make_ob_pool, pool)) == NULL) {
       err = callback_exception_error();
       goto finished;
     }
 
   /* make_baton takes our 'result' reference */
-  *node_baton = make_baton(pool, cb->editor_baton, result);
+  *node_baton = make_baton(pool, ib->anc, result);
   err = SVN_NO_ERROR;
 
  finished:
@@ -2574,21 +2572,20 @@ static svn_error_t *parse_fn3_set_revision_property(void *revision_baton,
                                                     const char *name,
                                                     const svn_string_t *value)
 {
-  child_baton_t *cb = revision_baton;
-  PyObject *editor = cb->editor_baton->editor;
+  svn_swig_py_item_baton_t *ib = revision_baton;
   PyObject *result;
   svn_error_t *err;
 
   svn_swig_py_acquire_py_lock();
 
   /* ### python doesn't have 'const' on the method name and format */
-  if ((result = PyObject_CallMethod(editor, (char *)"set_revision_property",
+  if ((result = PyObject_CallMethod(ib->editor, (char *)"set_revision_property",
 #if IS_PY3
                                     (char *)"Oyy#",
 #else
                                     (char *)"Oss#",
 #endif
-                                    cb->baton, name,
+                                    ib->baton, name,
                                     value ? value->data : NULL,
                                     (Py_ssize_t) (value ? value->len : 0)))
       == NULL)
@@ -2611,21 +2608,20 @@ static svn_error_t *parse_fn3_set_node_property(void *node_baton,
                                                 const char *name,
                                                 const svn_string_t *value)
 {
-  child_baton_t *cb = node_baton;
-  PyObject *editor = cb->editor_baton->editor;
+  svn_swig_py_item_baton_t *ib = node_baton;
   PyObject *result;
   svn_error_t *err;
 
   svn_swig_py_acquire_py_lock();
 
   /* ### python doesn't have 'const' on the method name and format */
-  if ((result = PyObject_CallMethod(editor, (char *)"set_node_property",
+  if ((result = PyObject_CallMethod(ib->editor, (char *)"set_node_property",
 #if IS_PY3
                                     (char *)"Oyy#",
 #else
                                     (char *)"Oss#",
 #endif
-                                    cb->baton, name,
+                                    ib->baton, name,
                                     value ? value->data : NULL,
                                     (Py_ssize_t) (value ? value->len : 0)))
       == NULL)
@@ -2647,17 +2643,16 @@ static svn_error_t *parse_fn3_set_node_property(void *node_baton,
 static svn_error_t *parse_fn3_delete_node_property(void *node_baton,
                                                    const char *name)
 {
-  child_baton_t *cb = node_baton;
-  PyObject *editor = cb->editor_baton->editor;
+  svn_swig_py_item_baton_t *ib = node_baton;
   PyObject *result;
   svn_error_t *err;
 
   svn_swig_py_acquire_py_lock();
 
   /* ### python doesn't have 'const' on the method name and format */
-  if ((result = PyObject_CallMethod(editor, (char *)"delete_node_property",
+  if ((result = PyObject_CallMethod(ib->editor, (char *)"delete_node_property",
                                     (char *)"O" SVN_SWIG_BYTES_FMT,
-                                    cb->baton, name)) == NULL)
+                                    ib->baton, name)) == NULL)
     {
       err = callback_exception_error();
       goto finished;
@@ -2675,16 +2670,15 @@ static svn_error_t *parse_fn3_delete_node_property(void *node_baton,
 
 static svn_error_t *parse_fn3_remove_node_props(void *node_baton)
 {
-  child_baton_t *cb = node_baton;
-  PyObject *editor = cb->editor_baton->editor;
+  svn_swig_py_item_baton_t *ib = node_baton;
   PyObject *result;
   svn_error_t *err;
 
   svn_swig_py_acquire_py_lock();
 
   /* ### python doesn't have 'const' on the method name and format */
-  if ((result = PyObject_CallMethod(editor, (char *)"remove_node_props",
-                                    (char *)"(O)", cb->baton)) == NULL)
+  if ((result = PyObject_CallMethod(ib->editor, (char *)"remove_node_props",
+                                    (char *)"(O)", ib->baton)) == NULL)
     {
       err = callback_exception_error();
       goto finished;
@@ -2703,16 +2697,15 @@ static svn_error_t *parse_fn3_remove_node_props(void *node_baton)
 static svn_error_t *parse_fn3_set_fulltext(svn_stream_t **stream,
                                            void *node_baton)
 {
-  child_baton_t *cb = node_baton;
-  PyObject *editor = cb->editor_baton->editor;
+  svn_swig_py_item_baton_t *ib = node_baton;
   PyObject *result = NULL;
   svn_error_t *err = SVN_NO_ERROR;
 
   svn_swig_py_acquire_py_lock();
 
   /* ### python doesn't have 'const' on the method name and format */
-  if ((result = PyObject_CallMethod(editor, (char *)"set_fulltext",
-                                    (char *)"(O)", cb->baton)) == NULL)
+  if ((result = PyObject_CallMethod(ib->editor, (char *)"set_fulltext",
+                                    (char *)"(O)", ib->baton)) == NULL)
     {
       err = callback_exception_error();
       goto finished;
@@ -2727,7 +2720,7 @@ static svn_error_t *parse_fn3_set_fulltext(svn_stream_t **stream,
     {
       /* create a stream from the IO object. it will increment the
          reference on the 'result'. */
-      *stream = svn_swig_py_make_stream(result, cb->pool);
+      *stream = svn_swig_py_make_stream(result, ib->pool);
       if (*stream == NULL)
         {
           err = callback_exception_error();
@@ -2748,16 +2741,15 @@ static svn_error_t *parse_fn3_apply_textdelta(svn_txdelta_window_handler_t *hand
                                               void **handler_baton,
                                               void *node_baton)
 {
-  child_baton_t *cb = node_baton;
-  PyObject *editor = cb->editor_baton->editor;
+  svn_swig_py_item_baton_t *ib = node_baton;
   PyObject *result;
   svn_error_t *err;
 
   svn_swig_py_acquire_py_lock();
 
   /* ### python doesn't have 'const' on the method name and format */
-  if ((result = PyObject_CallMethod(editor, (char *)"apply_textdelta",
-                                    (char *)"(O)", cb->baton)) == NULL)
+  if ((result = PyObject_CallMethod(ib->editor, (char *)"apply_textdelta",
+                                    (char *)"(O)", ib->baton)) == NULL)
     {
       err = callback_exception_error();
       goto finished;
@@ -2822,7 +2814,7 @@ svn_swig_py_parse_fns3_destroy(void *parse_baton)
 {
   svn_swig_py_item_baton_t *ib = parse_baton;
 
-  /* Idealy, we hope (ib->children == NULL) here, however it is not so
+  /* Idealy, we hope (ib->u.a.dec == NULL) here, however it is not so
      when error is occured during the call back processing...  */
   close_edit_baton(ib, "_close_dumpstream");
 
