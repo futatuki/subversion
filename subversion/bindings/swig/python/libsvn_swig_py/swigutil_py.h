@@ -277,7 +277,8 @@ svn_swig_py_unwrap_struct_ptr(PyObject *source,
 typedef struct svn_swig_py_item_baton_t svn_swig_py_item_baton_t;
 
 /* release reference of 'editor' Python object */
-void svn_swig_py_dereference_editor(svn_swig_py_item_baton_t *baton);
+svn_error_t *
+svn_swig_py_decref_editor(svn_swig_py_item_baton_t *baton);
 
 /* make an editor that "thunks" from C callbacks up to Python */
 void svn_swig_py_make_editor(const svn_delta_editor_t **editor,
