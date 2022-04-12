@@ -22,13 +22,7 @@ Candidate changes:
      Increase test coverage.
    Votes:
      +0: danielsh (with appropriate Skip()/XFail() annotations if needed)
-
- * r1883355
-   Use the APR-1.4+ API for flushing file contents to disk.
-   Justification:
-     Reduce code duplication between APR and SVN.
-   Votes:
-     +1: brane
+     +1: hartmannathan
 
  * r1878379, r1883719, r1883722, r1884610
    Distinguish configure scripts on release mode and non release mode.
@@ -38,31 +32,15 @@ Candidate changes:
    Votes:
      +1: futatuki, stsp
 
- * r1881534 (without CRLF problem)
-   Fix issue #4864 "build/ac-macros/macosx.m4: workaround AC_RUN_IFELSE"
+ * r1890223, r1890668, r1890673
+   Support building on Win64/ARM64.
    Justification:
-     Unblocks cross-compiling SVN.
-   Notes:
-     Replacement for veto-blocked r1881534 group (see below) without the
-     inconsistent line endings that instigated said veto blockage.
-   Branch:
-     1.14.x-r1881534-no-crlf
-   Votes:
-     +1: hartmannathan, stsp
+     At user request (via SharpSvn)
+   votes:
+     +1: rhuijben
 
 Veto-blocked changes:
 =====================
-
- * r1881534, r1883388
-   Fix issue #4864 "build/ac-macros/macosx.m4: workaround AC_RUN_IFELSE"
-   Justification:
-     Unblocks cross-compiling SVN.
-   Notes:
-     Replacement nomination above (the 1.14.x-r1881534-no-crlf branch)
-   Votes:
-     +1: hartmannathan
-     -1: brane (contains CRLF line endings, needs svn:eol-style + fixup)
-               (+1 once that is fixed)
 
 Approved changes:
 =================
