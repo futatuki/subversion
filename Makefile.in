@@ -979,9 +979,9 @@ clean-swig-pl:
 extraclean-swig-pl: clean-swig-pl
 	$(EXTRACLEAN_SWIG_PL)
 
-swig-py: autogen-swig-py copy-swig-py
+swig-py: autogen-swig-py
 
-swig-py2: autogen-swig-py2 copy-swig-py2
+swig-py2: autogen-swig-py2
 
 $(SWIG_PY_DIR)/libsvn:
 	mkdir $(SWIG_PY_DIR)/libsvn
