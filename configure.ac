@@ -1371,7 +1371,11 @@ AC_ARG_WITH(swig_python,
 ],
 [],
 [
+if test "$PYTHON" = "no" -o "$PYTHON" = "none" -o "$PYTHON3" = "no" -o "$PYTHON3" = "none" ; then
+  with_swig_python=no
+else
   with_swig_python=auto
+fi
 ])
 case $with_swig_python in
   yes|auto|"")
@@ -1392,10 +1396,15 @@ AC_SUBST(SWIG_PY_PYTHON)
 # Python 2.7: as a target of SWIG Python bindings
 AC_ARG_WITH(swig_python2,
 [AS_HELP_STRING([[--with-swig-python2[=PATH|auto|no]|--without-swig-python2]],
-                [specify path to SWIG bindings target Python 2.7 interpreter [default=auto]])],
+                [specify path to SWIG bindings target Python 2.7 interpreter
+                 [default=auto]. If the option value is 'auto' or it is not
+                 specfied, search for the Python 2.7 program.]
+                m4_ifndef([SVN_RELEASE_MODE],
+                  [[Implies --with-swig=yes if PATH is specfied or Python 2.7
+                    is found on 'auto' detection.]]))
 [],
 [
-if test "$PYTHON" = "no" -o "$PYTHON" = "none"; then
+if test "$PYTHON2" = "no" -o "$PYTHON2" = "none" -o "$PYTHON" = "no" -o "$PYTHON" = "none"; then
   with_swig_python2=no
 else
   with_swig_python2=auto
