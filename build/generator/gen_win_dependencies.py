@@ -1030,12 +1030,13 @@ class GenDependenciesBase(gen_base.GeneratorBase):
     "Find the appropriate options for creating SWIG-based Python modules"
 
     try:
-      from distutils import sysconfig
-
-      inc_dir = sysconfig.get_python_inc()
-      lib_dir = os.path.join(sysconfig.PREFIX, "libs")
+      import sysconfig
     except ImportError:
       return
+    config_vars = sysconfig.get_config_vars()
+    inc_dir = config_vars['INCLUDEPY']
+    base_dir = config_vars.get('installed_base') or config_vars.get('base')
+    lib_dir = os.path.join(base_dir, 'libs')
 
     if sys.version_info[0] >= 3:
       if self.swig_version < (3, 0, 10):
@@ -1044,8 +1045,13 @@ class GenDependenciesBase(gen_base.GeneratorBase):
         return
       if self.swig_version < (4, 0, 0):
         opts = "-python -py3 -nofastunpack -modern"
-      else:
+      elif self.swig_version < (4, 1, 0):
         opts = "-python -py3 -nofastunpack"
+      else:
+        opts = "-python -nofastunpack"
+      if show_warnings and self.swig_version > (4, 0, 2):
+        print("WARNING: Subversion Python bindings may work,\n"
+              "but we didn't check with this SWIG version.")
     else:
       if not ((1, 3, 24) <= self.swig_version < (4, 0, 0)):
         if show_warnings:
