@@ -114,6 +114,8 @@ def _usage_exit():
   print("  --fsfs-sharding        : Specify shard size (for fsfs)")
   print("  --fsfs-packing         : Run 'svnadmin pack' automatically")
   print("  --fsfs-compression=VAL : Set compression type to VAL (for fsfs)")
+  print("  --wc-format-version=VAL: Set the WC format version")
+  print("  --store-pristine=VAL   : Set the WC pristine mode")
   print("  -q, --quiet            : Deprecated; this is the default.")
   print("                           Use --set-log-level instead.")
 
@@ -145,7 +147,8 @@ opts, args = my_getopt(sys.argv[1:], 'hrdvqct:pu:f:',
                         'log-to-stdout', 'mode-filter=', 'milestone-filter=',
                         'ssl-cert=', 'exclusive-wc-locks', 'memcached-server=',
                         'skip-c-tests', 'dump-load-cross-check', 'memcached-dir=',
-                        'fsfs-compression=',
+                        'fsfs-compression=', 'wc-format-version=',
+                        'store-pristine='
                         ])
 if len(args) > 1:
   print('Warning: non-option arguments after the first one will be ignored')
@@ -193,6 +196,8 @@ skip_c_tests = None
 dump_load_cross_check = None
 fsfs_compression = None
 fsfs_dir_deltification = None
+wc_format_version = None
+store_pristine = None
 
 for opt, val in opts:
   if opt in ('-h', '--help'):
@@ -291,6 +296,10 @@ for opt, val in opts:
     fsfs_compression = val
   elif opt == '--fsfs-dir-deltification':
     fsfs_dir_deltification = val
+  elif opt == '--wc-format-version':
+    wc_format_version = val
+  elif opt == '--store-pristine':
+    store_pristine = val
 
 # Calculate the source and test directory names
 abs_srcdir = os.path.abspath("")
@@ -1132,6 +1141,8 @@ if not test_javahl and not test_swig:
   opts.dump_load_cross_check = dump_load_cross_check
   opts.fsfs_compression = fsfs_compression
   opts.fsfs_dir_deltification = fsfs_dir_deltification
+  opts.wc_format_version = wc_format_version
+  opts.store_pristine = store_pristine
   th = run_tests.TestHarness(abs_srcdir, abs_builddir,
                              log_file, fail_log_file, opts)
   old_cwd = os.getcwd()

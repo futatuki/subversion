@@ -84,8 +84,10 @@ Step 1: [Optional] Install a suitable version of SWIG
       following notes:
       - SWIG 1.3.24 and later 1.3.x may work, but we do not test these
         versions on our latest source code.
-      - For Python 2 bindings, SWIG 4.0.0 or later is not supported.
-      - For Python 3 bindings, SWIG 3.0.10 or later is required.
+      - For Python 3 bindings, use SWIG 3.0.10 or later. (SWIG 4.0.0
+        or later is supported as well.)
+      - For Python 2 bindings, use SWIG 2.x-3.x. (SWIG 4.0.0 or later
+        is not supported as it lacks the '-classic' option.)
       - Note that SWIG 3.0.9 has some trouble with Python support.
         (See https://sourceforge.net/p/swig/news/2016/06/swig-3010-released/)
       - For Perl 5.16 and later, SWIG 2.0.8 or later is required.
@@ -142,8 +144,8 @@ Step 2:  Build and Install Subversion.
   See Subversion's own INSTALL file for details.
 
   If you are using a Subversion distribution tarball and want to rebuild
-  the SWIG language bindings C source files with your installed SWIG, 
-  you need to execute autogen.sh, because the bundled configure script 
+  the SWIG language bindings C source files with your installed SWIG,
+  you need to execute autogen.sh, because the bundled configure script
   and makefiles don't support it.
 
   If you don't use SWIG bindings C source files already generated,
@@ -167,16 +169,28 @@ Step 2:  Build and Install Subversion.
     libsvn_swig_perl-1.so (for Perl)
     libsvn_swig_ruby-1.so (for Ruby)
 
+
+Step 2.5: [Optional] Clean Old Bindings Intermediate Source Files
+
+  If you are rebuilding bindings with different version of SWIG from
+  previously used, run 'make clean-swig'.  This will clean SWIG version
+  depended intermediate source files.  This step also needs if you are
+  using the Subversion distribution tarball and using autogen.sh to
+  rebuild configure script, because you might use different version of
+  SWIG from one we used to make the tarball.
+
+
 Step 3:  Install Specific Language Bindings
 
 *  Python
 
-   1.  (Optional) If you want to build Python bindings for a version of
-       Python than other than that the prebuilt bindings C sources target
-       (e.g., if you use the Subversion distribution tarball but want to build
-       Python 2 bindings), run 'make clean-swig-py' from the top of the
-       Subversion build tree, to ensure not to use incompatible version of
-       bindings source files.
+   1.  (Optional) Run 'make clean-swig-py' from the top of the Subversion
+       build tree.  This will clean any prebuilt or previously built bindings
+       to avoid a mixture of incompatible bindings source files (e.g., if you
+       use the Subversion distribution tarball but want to build Python 2
+       bindings).  This step is not needed if you run 'make clean-swig'
+       in Step 2.5 just before, because it runs 'make clean-swig-py'
+       internally.
 
    2.  Run 'make swig-py' from the top of the Subversion build tree,
        to build the bindings.

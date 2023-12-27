@@ -600,6 +600,35 @@ class Sandbox:
                        self.read_only and "true" or "false"))
     pass
 
+  @staticmethod
+  def _wc_format_of(wc_db_path):
+    """Return the working copy format of the given wc.db file."""
+    db = svntest.sqlite3.connect(wc_db_path)
+    c = db.cursor()
+    c.execute('pragma user_version;')
+    found_format = c.fetchone()[0]
+    db.close()
+    return found_format
+
+  def read_wc_formats(self):
+    """Return a dictionary mapping working copy root relpaths to their
+    format numbers.
+
+    The relpaths are relative to self.wc_dir.
+
+    The return value will always contain an empty string key.
+    """
+    dot_svn = svntest.main.get_admin_name()
+    ret = dict()
+    for root, dirs, files in os.walk(self.wc_dir):
+      if dot_svn in dirs:
+        wc_db_path = os.path.join(root, dot_svn, 'wc.db')
+        # If we didn't check existence, wc.db would be auto-created if .svn
+        # exists and .svn/wc.db doesn't.
+        if os.path.exists(wc_db_path):
+          ret[root[len(self.wc_dir)+1:]] = self._wc_format_of(wc_db_path)
+    return { k.replace(os.sep, '/') : ret[k] for k in ret }
+
 def is_url(target):
   return (target.startswith('^/')
           or target.startswith('file://')

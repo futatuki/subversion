@@ -178,6 +178,7 @@ if test -z "$PYTHON"; then
   echo "to the Python executable, and re-run autogen.sh"
   exit 1
 fi
+export PYTHON
 
 # Create some symbolic links which is needed to build SWIG Python 2 bindings.
 mkdir -p ./subversion/bindings/swig/python2/libsvn_swig_py

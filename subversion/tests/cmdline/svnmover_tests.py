@@ -3,7 +3,7 @@
 #  svnmover_tests.py: tests of svnmover
 #
 #  Subversion is a tool for revision control.
-#  See http://subversion.apache.org for more information.
+#  See https://subversion.apache.org for more information.
 #
 # ====================================================================
 #    Licensed to the Apache Software Foundation (ASF) under one
@@ -35,7 +35,7 @@ Item = svntest.wc.StateItem
 ######################################################################
 
 _commit_re = re.compile('^Committed r([0-9]+)')
-_log_re = re.compile('^   ([ADRM] /[^\(]+($| \(from .*:[0-9]+\)$))')
+_log_re = re.compile(r'^   ([ADRM] /[^\(]+($| \(from .*:[0-9]+\)$))')
 _err_re = re.compile('^svnmover: (.*)$')
 
 def mk_file(sbox, file_name):

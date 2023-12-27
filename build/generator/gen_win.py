@@ -128,7 +128,7 @@ class WinGeneratorBase(gen_win_dependencies.GenDependenciesBase):
     # VC 2002 and VC 2003 only allow a single platform per project file
     if subdir == 'vcnet-vcproj':
       if self.vcproj_version != '7.00' and self.vcproj_version != '7.10':
-        self.platforms = ['Win32','x64']
+        self.platforms = ['Win32', 'x64', 'ARM64']
 
     #Here we can add additional modes to compile for
     self.configs = ['Debug','Release']
@@ -574,7 +574,7 @@ class WinGeneratorBase(gen_win_dependencies.GenDependenciesBase):
     # This section parses those dependencies and adds them to the dependency list
     # for this target.
     if name.startswith('javahl') or name == 'libsvnjavahl':
-      for dep in re.findall('\$\(([^\)]*)_DEPS\)', target.add_deps):
+      for dep in re.findall(r'\$\(([^\)]*)_DEPS\)', target.add_deps):
         dep = dep.replace('_', '-')
         depends.extend(self.sections[dep].get_targets())
 
@@ -728,7 +728,7 @@ class WinGeneratorBase(gen_win_dependencies.GenDependenciesBase):
 
     for dep in self.get_win_depends(target, FILTER_EXTERNALLIBS):
       if dep.external_lib:
-        for elib in re.findall('\$\(SVN_([^\)]*)_LIBS\)', dep.external_lib):
+        for elib in re.findall(r'\$\(SVN_([^)]*)_LIBS\)', dep.external_lib):
           external_lib = elib.lower()
 
         if external_lib in self._libraries:
@@ -758,7 +758,7 @@ class WinGeneratorBase(gen_win_dependencies.GenDependenciesBase):
 
     for dep in self.get_win_depends(target, FILTER_EXTERNALLIBS):
       if dep.external_lib:
-        for elib in re.findall('\$\(SVN_([^\)]*)_LIBS\)', dep.external_lib):
+        for elib in re.findall(r'\$\(SVN_([^)]*)_LIBS\)', dep.external_lib):
           external_lib = elib.lower()
 
         if external_lib in self._libraries:
@@ -833,7 +833,7 @@ class WinGeneratorBase(gen_win_dependencies.GenDependenciesBase):
 
     for dep in self.get_win_depends(target, FILTER_LIBS):
       if dep.external_lib:
-        for elib in re.findall('\$\(SVN_([^\)]*)_LIBS\)', dep.external_lib):
+        for elib in re.findall(r'\$\(SVN_([^)]*)_LIBS\)', dep.external_lib):
           external_lib = elib.lower()
 
           if external_lib not in self._libraries:
@@ -887,7 +887,7 @@ class WinGeneratorBase(gen_win_dependencies.GenDependenciesBase):
       nondeplibs.extend(dep.msvc_libs)
 
       if dep.external_lib:
-        for elib in re.findall('\$\(SVN_([^\)]*)_LIBS\)', dep.external_lib):
+        for elib in re.findall(r'\$\(SVN_([^)]*)_LIBS\)', dep.external_lib):
 
           external_lib = elib.lower()
 
@@ -938,7 +938,7 @@ class WinGeneratorBase(gen_win_dependencies.GenDependenciesBase):
 
     for dep in self.get_win_depends(target, FILTER_EXTERNALLIBS):
       if dep.external_lib:
-        for elib in re.findall('\$\(SVN_([^\)]*)_LIBS\)', dep.external_lib):
+        for elib in re.findall(r'\$\(SVN_([^)]*)_LIBS\)', dep.external_lib):
           external_lib = elib.lower()
 
         if external_lib in self._libraries:

@@ -527,7 +527,7 @@ def expected_noop_update_output(rev):
   """Return an ExpectedOutput object describing what we'd expect to
   see from an update to revision REV that was effectively a no-op (no
   server changes transmitted)."""
-  return verify.createExpectedOutput("Updating '.*':|At revision %d."
+  return verify.createExpectedOutput("Updating '.*':|Fetching text bases [.]+done|At revision %d."
                                      % (rev),
                                      "no-op update")
 
@@ -1046,9 +1046,9 @@ def run_and_parse_info(*args):
       # normal line
       key, value = line.split(':', 1)
 
-      if re.search(' \(\d+ lines?\)$', key):
+      if re.search(r' \(\d+ lines?\)$', key):
         # numbered continuation lines
-        match = re.match('^(.*) \((\d+) lines?\)$', key)
+        match = re.match(r'^(.*) \((\d+) lines?\)$', key)
         key = match.group(1)
         lock_comment_lines = int(match.group(2))
       elif len(value) > 1:
@@ -1931,8 +1931,12 @@ def _run_and_verify_resolve(cmd, expected_paths, *args):
         expected_paths]),
     ],
     match_all=False)
-  run_and_verify_svn(expected_output, [],
-                     cmd, *args)
+  exit_code, out, err = main.run_svn(None, cmd, *args)
+  out = [line for line in out
+         if not re.match(r'Fetching text bases [.]+done\n', line)]
+  verify.verify_outputs("Unexpected output", out, err,
+                        expected_output, [])
+  verify.verify_exit_code("Unexpected return code", exit_code, 0)
 
 def run_and_verify_resolve(expected_paths, *args):
   """Run "svn resolve" with arguments ARGS, and verify that it resolves the
@@ -1955,8 +1959,18 @@ def run_and_verify_revert(expected_paths, *args):
   expected_output = verify.UnorderedOutput([
     "Reverted '" + path + "'\n" for path in
     expected_paths])
-  run_and_verify_svn(expected_output, [],
-                     "revert", *args)
+  run_and_verify_revert_output(expected_output, *args)
+
+def run_and_verify_revert_output(expected_output, *args):
+  """Run "svn revert" with arguments ARGS, and verify that it outputs
+     the text in EXPECTED_OUTPUT (and no stderr or exit code).
+  """
+  exit_code, out, err = main.run_svn(None, "revert", *args)
+  out = [line for line in out
+         if not re.match(r'Fetching text bases [.]+done\n', line)]
+  verify.verify_outputs("Unexpected output", out, err,
+                        expected_output, [])
+  verify.verify_exit_code("Unexpected return code", exit_code, 0)
 
 
 ######################################################################
@@ -2075,6 +2089,20 @@ def get_wc_base_rev(wc_dir):
   "Return the BASE revision of the working copy at WC_DIR."
   return run_and_parse_info(wc_dir)[0]['Revision']
 
+def get_wc_store_pristine(wc_dir):
+  "Return whether the working copy at WC_DIR stores pristine contents."
+  _, output, _ = run_and_verify_svn(
+    None, [],
+    'info', '--show-item=store-pristine', '--no-newline',
+    wc_dir)
+
+  if output == ['yes']:
+    return True
+  elif output == ['no']:
+    return False
+  else:
+    raise verify.SVNUnexpectedStdout(output)
+
 def load_dumpfile(filename):
   "Return the contents of the FILENAME assuming that it is a dump file"
   with open(filename, "rb") as fp:
@@ -2134,11 +2162,8 @@ def disable_revprop_changes(repo_dir):
   main.create_python_hook_script(hook_path,
                                  'import sys\n'
                                  'sys.stderr.write("pre-revprop-change %s" %'
-                                                  ' " ".join(sys.argv[1:]))\n'
-                                 'sys.exit(1)\n',
-                                 cmd_alternative=
-                                       '@echo pre-revprop-change %* 1>&2\n'
-                                       '@exit 1\n')
+                                                  ' " ".join(sys.argv[2:]))\n'
+                                 'sys.exit(1)\n')
 
 def create_failing_post_commit_hook(repo_dir):
   """Create a post-commit hook script in the repository at REPO_DIR that always

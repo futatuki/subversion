@@ -51,6 +51,7 @@
 #include "svn_sorts.h"
 #include "svn_subst.h"
 #include "svn_ra.h"
+#include "svn_version.h"
 #include "client.h"
 #include "mergeinfo.h"
 
@@ -422,6 +423,37 @@ merge_source_dup(const merge_source_t *source,
   return s;
 }
 
+/* Decide whether ambiguous foreign merge should be a warning or an error */
+#define WITH_AMBIGUOUS_FOREIGN_MERGE_WARNING \
+          (SVN_VER_MAJOR == 1 && SVN_VER_MINOR < 16)
+
+#if WITH_AMBIGUOUS_FOREIGN_MERGE_WARNING
+/* Notify a warning, given in WARNING, if WARNING is non-null.
+ *
+ * We plan to replace this with a hard error in Subversion 1.16.
+ * This clears the error object WARNING before returning.
+ */
+static void
+notify_pre_1_16_warning(svn_error_t *warning,
+                        svn_client_ctx_t *ctx,
+                        apr_pool_t *pool)
+{
+  if (!warning)
+    return;
+
+  if (ctx->notify_func2)
+    {
+      svn_wc_notify_t *n
+        = svn_wc_create_notify("" /*path*/, svn_wc_notify_warning, pool);
+
+      n->err = svn_error_quick_wrap(warning,
+                 _("In Subversion 1.16 this warning will become a fatal error"));
+      ctx->notify_func2(ctx->notify_baton2, n, pool);
+    }
+  svn_error_clear(warning);
+}
+#endif
+
 /* Return SVN_ERR_UNSUPPORTED_FEATURE if URL is not inside the repository
    of LOCAL_ABSPATH.  Use SCRATCH_POOL for temporary allocations. */
 static svn_error_t *
@@ -440,38 +472,70 @@ check_repos_match(const merge_target_t *target,
   return SVN_NO_ERROR;
 }
 
-/* Return TRUE iff the repository of LOCATION1 is the same as
- * that of LOCATION2.  If STRICT_URLS is true, the URLs must
- * match (and the UUIDs, just to be sure), otherwise just the UUIDs must
- * match and the URLs can differ (a common case is http versus https). */
-static svn_boolean_t
-is_same_repos(const svn_client__pathrev_t *location1,
+/* Decide whether LOCATION1 and LOCATION2 point to the same repository
+ * (with the same root URL) or to two different repositories.
+ *   - same repository root URL         -> set *SAME_REPOS true
+ *   - different repositories           -> set *SAME_REPOS false
+ *   - different URLs but same UUID     -> return an error
+ *
+ * The last case is unsupported for practical and historical reasons
+ * (see issue #4874) even though different URLs pointing to the same or
+ * equivalent repositories could be supported in principle.
+ */
+static svn_error_t *
+is_same_repos(svn_boolean_t *same_repos,
+              const svn_client__pathrev_t *location1,
+              const char *path1,
               const svn_client__pathrev_t *location2,
-              svn_boolean_t strict_urls)
+              const char *path2,
+              const char *message)
 {
-  if (strict_urls)
-    return (strcmp(location1->repos_root_url, location2->repos_root_url) == 0
-            && strcmp(location1->repos_uuid, location2->repos_uuid) == 0);
+  if (strcmp(location1->repos_root_url, location2->repos_root_url) == 0)
+    *same_repos = TRUE;
+  else if (strcmp(location1->repos_uuid, location2->repos_uuid) != 0)
+    *same_repos = FALSE;
   else
-    return (strcmp(location1->repos_uuid, location2->repos_uuid) == 0);
+    {
+      svn_error_t *err
+        = svn_error_create(SVN_ERR_CLIENT_UNRELATED_RESOURCES, NULL, message);
+
+      return svn_error_quick_wrapf(err,
+               _("The locations '%s' and '%s' point to repositories with the "
+                 "same repository UUID using different repository root URLs "
+                 "('%s' and '%s')"),
+               path1, path2,
+               location1->repos_root_url, location2->repos_root_url);
+    }
+  return SVN_NO_ERROR;
 }
 
-/* If the repository identified of LOCATION1 is not the same as that
- * of LOCATION2, throw a SVN_ERR_CLIENT_UNRELATED_RESOURCES
- * error mentioning PATH1 and PATH2. For STRICT_URLS, see is_same_repos().
+/* Check that LOCATION1 and LOCATION2 point to the same repository, with
+ * the same root URL.  If not, throw a SVN_ERR_CLIENT_UNRELATED_RESOURCES
+ * error mentioning PATH_OR_URL1 and PATH_OR_URL2.
  */
 static svn_error_t *
 check_same_repos(const svn_client__pathrev_t *location1,
-                 const char *path1,
+                 const char *path_or_url1,
                  const svn_client__pathrev_t *location2,
-                 const char *path2,
-                 svn_boolean_t strict_urls,
-                 apr_pool_t *scratch_pool)
+                 const char *path_or_url2,
+                 const char *message)
 {
-  if (! is_same_repos(location1, location2, strict_urls))
-    return svn_error_createf(SVN_ERR_CLIENT_UNRELATED_RESOURCES, NULL,
-                             _("'%s' must be from the same repository as "
-                               "'%s'"), path1, path2);
+  svn_boolean_t same_repos;
+
+  SVN_ERR(is_same_repos(&same_repos,
+                        location1, path_or_url1, location2, path_or_url2,
+                        message));
+  if (! same_repos)
+    {
+      svn_error_t *err
+        = svn_error_create(SVN_ERR_CLIENT_UNRELATED_RESOURCES, NULL, message);
+
+      return svn_error_quick_wrapf(err,
+               _("The locations '%s' and '%s' point to different repositories "
+                 "(root URLs '%s' and '%s', and differing UUIDs)"),
+               path_or_url1, path_or_url2,
+               location1->repos_root_url, location2->repos_root_url);
+    }
   return SVN_NO_ERROR;
 }
 
@@ -2062,7 +2126,7 @@ merge_file_changed(const char *relpath,
     }
 
   /* This callback is essentially no more than a wrapper around
-     svn_wc_merge5().  Thank goodness that all the
+     svn_wc_merge6().  Thank goodness that all the
      diff-editor-mechanisms are doing the hard work of getting the
      fulltexts! */
 
@@ -2140,7 +2204,7 @@ merge_file_changed(const char *relpath,
 
       /* Do property merge and text merge in one step so that keyword expansion
          takes into account the new property values. */
-      SVN_ERR(svn_wc_merge5(&content_outcome, &property_state, ctx->wc_ctx,
+      SVN_ERR(svn_wc_merge6(&content_outcome, &property_state, ctx->wc_ctx,
                             left_file, right_file, local_abspath,
                             left_label, right_label, target_label,
                             left, right,
@@ -10531,16 +10595,34 @@ svn_client__merge_locked(svn_client__conflict_report_t **conflict_report,
             source2, NULL, revision2, revision2, ctx, sesspool));
 
   /* We can't do a diff between different repositories. */
-  /* ### We should also insist that the root URLs of the two sources match,
-   *     as we are only carrying around a single source-repos-root from now
-   *     on, and URL calculations will go wrong if they differ.
-   *     Alternatively, teach the code to cope with differing root URLs. */
-  SVN_ERR(check_same_repos(source1_loc, source1_loc->url,
-                           source2_loc, source2_loc->url,
-                           FALSE /* strict_urls */, scratch_pool));
+  err = check_same_repos(
+          source1_loc, source1, source2_loc, source2,
+          _("The repository root URLs of the two sources must be identical "
+            "in a two-URL merge"));
+  if (err)
+    /* Add an error code and message compatible with Subversion <= 1.14 */
+    return svn_error_createf(SVN_ERR_RA_ILLEGAL_URL, err,
+             _("'%s' isn't in the same repository as '%s'"),
+             source1, source2_loc->repos_root_url);
 
   /* Do our working copy and sources come from the same repository? */
-  same_repos = is_same_repos(&target->loc, source1_loc, TRUE /* strict_urls */);
+  err = is_same_repos(&same_repos,
+          source1_loc, source1, &target->loc, target_abspath,
+          _("The given merge source must have the same repository "
+            "root URL as the target WC, in the usual case; "
+            "or, if a foreign repository merge is intended, the repositories "
+            "must have different root URLs and different UUIDs"));
+#if WITH_AMBIGUOUS_FOREIGN_MERGE_WARNING
+  if (err)
+    {
+      /* Subversion 1.14 compatibility: do a foreign-repository merge,
+       * even though the repository UUIDs are identical. Issue a warning. */
+      notify_pre_1_16_warning(err, ctx, scratch_pool);
+      same_repos = FALSE;
+    }
+#else
+  SVN_ERR(err);
+#endif
 
   /* Unless we're ignoring ancestry, see if the two sources are related.  */
   if (! ignore_mergeinfo)
@@ -11746,13 +11828,12 @@ open_reintegrate_source_and_target(svn_ra_session_t **source_ra_session_p,
 
   /* source_loc and target->loc are required to be in the same repository,
      as mergeinfo doesn't come into play for cross-repository merging. */
-  SVN_ERR(check_same_repos(source_loc,
-                           svn_dirent_local_style(source_path_or_url,
-                                                  scratch_pool),
-                           &target->loc,
-                           svn_dirent_local_style(target->abspath,
-                                                  scratch_pool),
-                           TRUE /* strict_urls */, scratch_pool));
+  SVN_ERR(check_same_repos(
+            source_loc, source_path_or_url,
+            &target->loc, svn_dirent_local_style(target->abspath,
+                                                 scratch_pool),
+            _("The repository root URLs of the source and the target WC "
+              "must be identical in a reintegrate merge")));
 
   *source_loc_p = source_loc;
   *target_p = target;
@@ -11914,7 +11995,24 @@ merge_peg_locked(svn_client__conflict_report_t **conflict_report,
                                   scratch_pool, scratch_pool));
 
   /* Check for same_repos. */
-  same_repos = is_same_repos(&target->loc, source_loc, TRUE /* strict_urls */);
+  err = is_same_repos(&same_repos,
+            source_loc, source_path_or_url,
+            &target->loc, target_abspath,
+            _("The given merge source must have the same repository "
+              "root URL as the target WC, in the usual case; "
+              "or, if a foreign repository merge is intended, the repositories "
+              "must have different root URLs and different UUIDs"));
+#if WITH_AMBIGUOUS_FOREIGN_MERGE_WARNING
+  if (err)
+    {
+      /* Subversion 1.14 compatibility: do a foreign-repository merge,
+       * even though the repository UUIDs are identical. Issue a warning. */
+      notify_pre_1_16_warning(err, ctx, scratch_pool);
+      same_repos = FALSE;
+    }
+#else
+  SVN_ERR(err);
+#endif
 
   /* Do the real merge!  (We say with confidence that our merge
      sources are both ancestral and related.) */
@@ -12702,9 +12800,12 @@ client_find_automatic_merge(automatic_merge_t **merge_p,
             ctx, result_pool));
 
   /* Check source is in same repos as target. */
-  SVN_ERR(check_same_repos(s_t->source, source_path_or_url,
-                           &s_t->target->loc, target_abspath,
-                           TRUE /* strict_urls */, scratch_pool));
+  SVN_ERR(check_same_repos(
+            s_t->source, source_path_or_url,
+            &s_t->target->loc, svn_dirent_local_style(target_abspath,
+                                                      scratch_pool),
+            _("The repository root URLs of the source and the target WC "
+              "must be identical in an automatic merge")));
 
   SVN_ERR(find_automatic_merge(&merge->base, &merge->is_reintegrate_like, s_t,
                                ctx, result_pool, scratch_pool));
@@ -12847,7 +12948,7 @@ do_automatic_merge_locked(svn_client__conflict_report_t **conflict_report,
          for the root path of the merge).
 
          An improvement would be to change find_automatic_merge() to
-         find the base for each sutree, and then here use the oldest base
+         find the base for each subtree, and then here use the oldest base
          among all subtrees. */
       apr_array_header_t *merge_sources;
       svn_ra_session_t *ra_session = NULL;

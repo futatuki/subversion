@@ -24,7 +24,7 @@ dnl Get the version of Subversion, using m4's esyscmd() command to do this
 dnl at m4-time, since AC_INIT() requires it then.
 AC_INIT([subversion],
      [esyscmd($PYTHON build/getversion.py SVN subversion/include/svn_version.h)],
-     [http://subversion.apache.org/])
+     [https://subversion.apache.org/])
 
 AC_CONFIG_SRCDIR(subversion/include/svn_types.h)
 AC_CONFIG_AUX_DIR([build])
@@ -178,10 +178,10 @@ SVN_FIND_APACHE(20051115, $apache_whitelist_ver)
 dnl Search for SQLite.  If you change SQLITE_URL from a .zip to
 dnl something else also update build/ac-macros/sqlite.m4 to reflect
 dnl the correct command to unpack the downloaded file.
-SQLITE_MINIMUM_VER="3.8.2"
-SQLITE_RECOMMENDED_VER="3.8.11.1"
+SQLITE_MINIMUM_VER="3.24.0"
+SQLITE_RECOMMENDED_VER="3.39.4"
 dnl Used to construct the SQLite download URL.
-SQLITE_RECOMMENDED_VER_REL_YEAR="2015"
+SQLITE_RECOMMENDED_VER_REL_YEAR="2022"
 SQLITE_URL="https://www.sqlite.org/$SQLITE_RECOMMENDED_VER_REL_YEAR/sqlite-amalgamation-$(printf %d%02d%02d%02d $(echo ${SQLITE_RECOMMENDED_VER} | sed -e 's/\./ /g')).zip"
 
 SVN_LIB_SQLITE(${SQLITE_MINIMUM_VER}, ${SQLITE_RECOMMENDED_VER},
@@ -379,7 +379,7 @@ fi
 dnl Check for doxygen
 doxygen=yes
 AC_ARG_WITH(doxygen,
-AC_HELP_STRING([--with-doxygen=PATH],
+AS_HELP_STRING([--with-doxygen=PATH],
                [Specify the command to run doxygen]),
 [
     doxygen="$withval"
@@ -872,21 +872,18 @@ fi
 
 dnl plaintext passwords -------------------
 AC_ARG_ENABLE(plaintext-password-storage,
-AS_HELP_STRING([--enable-plaintext-password-storage],
-               [Enable on-disk caching of plaintext passwords and passphrases.
-                (Enabling this functionality will not force Subversion
+AS_HELP_STRING([--disable-plaintext-password-storage],
+               [Disable on-disk caching of plaintext passwords and passphrases.
+                (Leaving this functionality enabled will not force Subversion
                 to store passwords in plaintext, but does permit users to
                 explicitly allow that behavior via runtime configuration.)]),
-[plaintext_passwordd_storage="$enableval"],
-[plaintext_passwordd_storage="no"])
-
-if test "$plaintext_passwordd_storage" = "yes"; then
-  AC_MSG_WARN([Enabling plaintext password/passphrase storage])
-else
-  AC_MSG_NOTICE([Disabling plaintext password/passphrase storage])
-  AC_DEFINE(SVN_DISABLE_PLAINTEXT_PASSWORD_STORAGE, 1,
-            [Defined if plaintext password/passphrase storage is disabled])
-fi
+[
+   if test "$enableval" = "no"; then
+      AC_MSG_NOTICE([Disabling plaintext password/passphrase storage])
+      AC_DEFINE(SVN_DISABLE_PLAINTEXT_PASSWORD_STORAGE, 1,
+                [Defined if plaintext password/passphrase storage is disabled])
+   fi
+])
 
 dnl Build and install rules -------------------
 
@@ -933,9 +930,6 @@ AC_SUBST(BDB_TEST_DEPS)
 AC_SUBST(BDB_TEST_PROGRAMS)
 
 dnl Check for header files ----------------
-
-dnl Standard C headers
-AC_HEADER_STDC
 
 dnl Check for typedefs, structures, and compiler characteristics ----------
 
@@ -1031,6 +1025,7 @@ AC_SUBST([libsvn_diff_LDFLAGS])
 AC_SUBST([libsvn_fs_LDFLAGS])
 AC_SUBST([libsvn_fs_base_LDFLAGS])
 AC_SUBST([libsvn_fs_fs_LDFLAGS])
+AC_SUBST([libsvn_fs_x_LDFLAGS])
 AC_SUBST([libsvn_fs_util_LDFLAGS])
 AC_SUBST([libsvn_ra_LDFLAGS])
 AC_SUBST([libsvn_ra_local_LDFLAGS])
@@ -1249,7 +1244,7 @@ AC_SUBST(MOD_ACTIVATION)
 
 
 AC_ARG_ENABLE(gcov,
-AC_HELP_STRING([--enable-gcov],
+AS_HELP_STRING([--enable-gcov],
                [Turn on gcov coverage testing (GCC only).]),
 [
     if test "$enableval" = "yes" ; then
@@ -1802,6 +1797,7 @@ done
 
 SVN_CONFIG_SCRIPT(tools/backup/hot-backup.py)
 SVN_CONFIG_SCRIPT(tools/hook-scripts/commit-access-control.pl)
+SVN_CONFIG_SCRIPT(subversion/tests/cmdline/svneditor.sh)
 SVN_CONFIG_SCRIPT(subversion/bindings/swig/perl/native/Makefile.PL)
 if test -e packages/solaris/pkginfo.in; then
   SVN_CONFIG_SCRIPT(packages/solaris/pkginfo)
@@ -1846,7 +1842,7 @@ https://www.gnu.org/licenses/agpl-3.0.html
 http://opensource.org/licenses/AGPL-3.0
 
 The Berkeley DB backend to Subversion is deprecated; see
-http://subversion.apache.org/docs/release-notes/1.8#bdb-deprecated
+https://subversion.apache.org/docs/release-notes/1.8#bdb-deprecated
 
 The Subversion developers have not tested Subversion with Berkeley DB 6 for
 technical problems or bugs.

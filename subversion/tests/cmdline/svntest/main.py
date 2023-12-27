@@ -58,6 +58,17 @@ from svntest import Skip
 from svntest.wc import StateItem as Item
 
 SVN_VER_MINOR = 15
+DEFAULT_COMPATIBLE_VERSION = "1.8"
+
+def svn_wc__min_supported_format_version():
+  return '1.8'
+
+def svn_wc__max_supported_format_version():
+  return '1.15'
+
+def svn_wc__is_supported_format_version(v):
+  major, minor = v.split('.')
+  return int(major) == 1 and int(minor) in range(8, 15+1)
 
 ######################################################################
 #
@@ -129,7 +140,10 @@ else:
 if windows:
   svneditor_script = os.path.join(sys.path[0], 'svneditor.bat')
 else:
-  svneditor_script = os.path.join(sys.path[0], 'svneditor.py')
+  # This script is in the build tree, not in the source tree.  
+  svneditor_script = os.path.join(os.path.dirname(
+                                      os.path.dirname(os.path.abspath('.'))),
+                                  'tests/cmdline/svneditor.sh')
 
 # Username and password used by the working copies
 wc_author = 'jrandom'
@@ -196,6 +210,9 @@ svnauthz_validate_binary = os.path.abspath(
     '../../../tools/server-side/svnauthz-validate' + _exe
 )
 svnmover_binary = os.path.abspath('../../../tools/dev/svnmover/svnmover' + _exe)
+
+# Where to find the libtool script created during build
+libtool_script = os.path.abspath('../../../libtool')
 
 # Location to the pristine repository, will be calculated from test_area_url
 # when we know what the user specified for --url.
@@ -494,6 +511,13 @@ def open_pipe(command, bufsize=-1, stdin=None, stdout=None, stderr=None):
   if command[0].endswith('.py'):
     command.insert(0, sys.executable)
 
+  if options.valgrind:
+    if os.path.basename(command[0]) in options.valgrind.split(','):
+      valgrind = [libtool_script, '--mode=execute', 'valgrind', '--quiet']
+      if options.valgrind_opts is not None:
+        valgrind += options.valgrind_opts.split(' ')
+      command = valgrind + command
+
   command_string = command[0] + ' ' + ' '.join(map(_quote_arg, command[1:]))
 
   if not stdin:
@@ -613,6 +637,13 @@ def run_command_stdin(command, error_expected, bufsize=-1, binary_mode=False,
 
   start = time.time()
 
+  if sys.version_info >= (3, 0):
+    # Don't include 'bytes' since spawn_process() would raise.
+    assert all(isinstance(arg, (str, int)) for arg in varargs)
+  else:
+    # Include 'unicode' since svnrdump_tests pass b''.decode().
+    assert all(isinstance(arg, (str, unicode, int)) for arg in varargs)
+
   exit_code, stdout_lines, stderr_lines = spawn_process(command,
                                                         bufsize,
                                                         binary_mode,
@@ -634,8 +665,7 @@ def run_command_stdin(command, error_expected, bufsize=-1, binary_mode=False,
       break
     # Does the server leak the repository on-disk path?
     # (prop_tests-12 installs a hook script that does that intentionally)
-    if any(map(_line_contains_repos_diskpath, lines)) \
-       and not any(map(lambda arg: 'prop_tests-12' in arg, varargs)):
+    if any(map(_line_contains_repos_diskpath, lines)):
       raise Failure("Repository diskpath in %s: %r" % (name, lines))
 
   valgrind_diagnostic = False
@@ -671,7 +701,7 @@ def run_command_stdin(command, error_expected, bufsize=-1, binary_mode=False,
 
 def create_config_dir(cfgdir, config_contents=None, server_contents=None,
                       ssl_cert=None, ssl_url=None, http_proxy=None,
-                      exclusive_wc_locks=None):
+                      exclusive_wc_locks=None, wc_format_version=None):
   "Create config directories and files"
 
   # config file names
@@ -691,12 +721,14 @@ password-stores =
 
 [miscellany]
 interactive-conflicts = false
+
+[working-copy]
 """
     if exclusive_wc_locks:
-      config_contents += """
-[working-copy]
-exclusive-locking = true
-"""
+      config_contents += "exclusive-locking = true\n"
+    if wc_format_version:
+      config_contents += ("compatible-version = %s\n" % wc_format_version)
+
   # define default server file contents if none provided
   if server_contents is None:
     http_library_str = ""
@@ -780,6 +812,18 @@ def copy_trust(dst_cfgdir, src_cfgdir):
   for f in os.listdir(src_ssl_dir):
     shutil.copy(os.path.join(src_ssl_dir, f), os.path.join(dst_ssl_dir, f))
 
+def _with_store_pristine(args):
+  if '--store-pristine' in args \
+      or any(str(one_arg).startswith('--store-pristine=') for one_arg in args) \
+      or options.store_pristine is None:
+    return args
+  non_opt_args = [a for a in args if not str(a).startswith('-')]
+  if non_opt_args:
+    subcommand = non_opt_args[0]
+    if subcommand in ['co', 'checkout']:
+      return args + ('--store-pristine', options.store_pristine)
+  return args
+
 def _with_config_dir(args):
   if '--config-dir' in args:
     return args
@@ -815,7 +859,8 @@ def run_svn(error_expected, *varargs):
   you're just checking that something does/doesn't come out of
   stdout/stderr, you might want to use actions.run_and_verify_svn()."""
   return run_command(svn_binary, error_expected, False,
-                     *(_with_auth(_with_config_dir(varargs))))
+                     *(_with_store_pristine(
+                       _with_auth(_with_config_dir(varargs)))))
 
 # For running svnadmin.  Ignores the output.
 def run_svnadmin(*varargs):
@@ -1360,7 +1405,7 @@ def write_restrictive_svnserve_conf(repo_dir, anon_access="none",
     fp.write("groups-db = groups\n")
   if options.enable_sasl:
     fp.write("realm = svntest\n"
-             "[sasl]\n",
+             "[sasl]\n"
              "use-sasl = true\n");
   else:
     fp.write("password-db = passwd\n")
@@ -1466,7 +1511,7 @@ def merge_notify_line(revstart=None, revend=None, same_URL=True,
   merge operation on revisions REVSTART through REVEND.  Omit both
   REVSTART and REVEND for the case where the left and right sides of
   the merge are from different URLs."""
-  from_foreign_phrase = foreign and "\(from foreign repository\) " or ""
+  from_foreign_phrase = foreign and r"\(from foreign repository\) " or ""
   if target:
     target_re = re.escape(target)
   else:
@@ -1716,6 +1761,22 @@ def is_httpd_authz_provider_enabled():
 def is_remote_http_connection_allowed():
   return options.allow_remote_http_connection
 
+def wc_format(ver=None):
+  """Return the WC format number used by Subversion version VER.
+
+  VER should be a version string such as '1.15' or '1.15.0' or '1.15.0-beta2'.
+
+  If omitted, the format number of new working copies, as expected to be
+  created by 'svn checkout' without '--compatible-version', is returned.
+  """
+  if not ver:
+    ver = (options.wc_format_version or DEFAULT_COMPATIBLE_VERSION)
+  minor = int(ver.split('.')[1])
+  if minor >= 15 and minor <= SVN_VER_MINOR:
+    return 32
+  if minor >= 8 and minor <= 14:
+    return 31
+  raise Exception("Unrecognized version number '%s'" % (ver,))
 
 ######################################################################
 
@@ -1765,6 +1826,8 @@ class TestSpawningThread(threading.Thread):
       args.append('--http-library=' + options.http_library)
     if options.server_minor_version:
       args.append('--server-minor-version=' + str(options.server_minor_version))
+    if options.wc_format_version:
+      args.append('--wc-format-version=' + options.wc_format_version)
     if options.mode_filter:
       args.append('--mode-filter=' + options.mode_filter)
     if options.milestone_filter:
@@ -1801,6 +1864,12 @@ class TestSpawningThread(threading.Thread):
       args.append('--allow-remote-http-connection')
     if options.svn_bin:
       args.append('--bin=' + options.svn_bin)
+    if options.store_pristine:
+      args.append('--store-pristine=' + options.store_pristine)
+    if options.valgrind:
+      args.append('--valgrind=' + options.valgrind)
+    if options.valgrind_opts:
+      args.append('--valgrind-opts=' + options.valgrind_opts)
 
     result, stdout_lines, stderr_lines = spawn_process(command, 0, False, None,
                                                        *args)
@@ -1808,7 +1877,7 @@ class TestSpawningThread(threading.Thread):
 
 class TestRunner:
   """Encapsulate a single test case (predicate), including logic for
-  runing the test and test list output."""
+  running the test and test list output."""
 
   def __init__(self, func, index):
     self.pred = svntest.testcase.create_test_case(func)
@@ -2119,13 +2188,12 @@ def _create_parser(usage=None):
   if logger.getEffectiveLevel() == logging.NOTSET:
     logger.setLevel(logging.WARN)
 
-  def set_log_level(option, opt, value, parser, level=None):
-    if level:
-      # called from --verbose
-      logger.setLevel(level)
+  def set_log_level(option, opt, value, parser):
+    if value.isdigit():
+      level = int(value)
     else:
-      # called from --set-log-level
-      logger.setLevel(getattr(logging, value, None) or int(value))
+      level = getattr(logging, value)
+    logger.setLevel(level)
 
   # Set up the parser.
   # If you add new options, consider adding them in
@@ -2144,10 +2212,10 @@ def _create_parser(usage=None):
                     help='Print test doc strings instead of running them')
   parser.add_option('--milestone-filter', action='store', dest='milestone_filter',
                     help='Limit --list to those with target milestone specified')
-  parser.add_option('-v', '--verbose', action='callback',
-                    callback=set_log_level, callback_args=(logging.DEBUG, ),
+  parser.add_option('-v', '--verbose', action='store_const',
+                    dest='set_log_level', const=logging.DEBUG,
                     help='Print binary command-lines (same as ' +
-                         '"--set-log-level logging.DEBUG")')
+                         '"--set-log-level DEBUG")')
   parser.add_option('-q', '--quiet', action='store_true',
                     help='Print only unexpected results (not with --verbose)')
   parser.add_option('-p', '--parallel', action='store_const',
@@ -2182,6 +2250,10 @@ def _create_parser(usage=None):
   parser.add_option('--server-minor-version', type='int', action='store',
                     help="Set the minor version for the server ('3'..'%d')."
                     % SVN_VER_MINOR)
+  parser.add_option('--wc-format-version', action='store',
+                    help="Set the WC format version for all tests ('%s'..'%s')."
+                    % (svn_wc__min_supported_format_version(),
+                       svn_wc__max_supported_format_version()))
   parser.add_option('--fsfs-packing', action='store_true',
                     help="Run 'svnadmin pack' automatically")
   parser.add_option('--fsfs-sharding', action='store', type='int',
@@ -2236,6 +2308,12 @@ def _create_parser(usage=None):
                     help='Set directory deltification option (for fsfs)')
   parser.add_option('--allow-remote-http-connection', action='store_true',
                     help='Run tests that connect to remote HTTP(S) servers')
+  parser.add_option('--store-pristine', action='store', type='str',
+                    help='Set the WC pristine mode')
+  parser.add_option('--valgrind', action='store',
+                    help='programs to run under valgrind')
+  parser.add_option('--valgrind-opts', action='store',
+                    help='options to pass to valgrind')
 
   # most of the defaults are None, but some are other values, set them here
   parser.set_defaults(
@@ -2307,6 +2385,13 @@ def parse_options(arglist=sys.argv[1:], usage=None):
   if options.server_minor_version not in range(3, SVN_VER_MINOR+1):
     parser.error("test harness only supports server minor versions 3-%d"
                  % SVN_VER_MINOR)
+
+  if not (options.wc_format_version is None or
+          svn_wc__is_supported_format_version(options.wc_format_version)):
+    parser.error("test harness only supports WC formats %s to %s, not '%s'"
+                 % (svn_wc__min_supported_format_version(),
+                    svn_wc__max_supported_format_version(),
+                    options.wc_format_version))
 
   pass
 
@@ -2587,7 +2672,8 @@ def execute_tests(test_list, serial_only = False, test_name = None,
                         ssl_cert=options.ssl_cert,
                         ssl_url=options.test_area_url,
                         http_proxy=options.http_proxy,
-                        exclusive_wc_locks=options.exclusive_wc_locks)
+                        exclusive_wc_locks=options.exclusive_wc_locks,
+                        wc_format_version=options.wc_format_version)
 
       # Setup the pristine repositories
       svntest.actions.setup_pristine_repositories()

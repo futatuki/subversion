@@ -310,6 +310,7 @@ libsvn_diff_LDFLAGS = @libsvn_diff_LDFLAGS@
 libsvn_fs_LDFLAGS = @libsvn_fs_LDFLAGS@
 libsvn_fs_base_LDFLAGS = @libsvn_fs_base_LDFLAGS@
 libsvn_fs_fs_LDFLAGS = @libsvn_fs_fs_LDFLAGS@
+libsvn_fs_x_LDFLAGS = @libsvn_fs_x_LDFLAGS@
 libsvn_fs_util_LDFLAGS = @libsvn_fs_util_LDFLAGS@
 libsvn_ra_LDFLAGS = @libsvn_ra_LDFLAGS@
 libsvn_ra_local_LDFLAGS = @libsvn_ra_local_LDFLAGS@
@@ -505,10 +506,11 @@ fast-clean: doc-clean
 	echo $(CLEAN_FILES) | xargs rm -f --
 	for d in $(CTYPES_PYTHON_SRC_DIR) $(SWIG_PY_SRC_DIR) $(SWIG_PY_DIR) \
 		$(SWIG_PY2_SRC_DIR) $(SWIG_PY2_DIR) \
-		$(abs_srcdir)/build $(top_srcdir)/subversion/tests/cmdline/svntest; \
+		$(abs_srcdir)/build $(top_srcdir)/subversion/tests/cmdline; \
 	do \
 	  test -e $$d || continue; \
-	  find $$d -name "*.pyc" -exec rm {} ';'; \
+	  find $$d '(' -name "__pycache__" -prune -o -name "*.pyc" ')' \
+	    -exec rm -rf {} ';'; \
 	done
 
 # clean everything, returning to before './configure' was run.
@@ -624,6 +626,9 @@ check: bin @TRANSFORM_LIBTOOL_SCRIPTS@ $(TEST_DEPS) @BDB_TEST_DEPS@
 	  if test "$(SERVER_MINOR_VERSION)" != ""; then                      \
 	    flags="--server-minor-version $(SERVER_MINOR_VERSION) $$flags";  \
 	  fi;                                                                \
+	  if test "$(WC_FORMAT_VERSION)" != ""; then                         \
+	    flags="--wc-format-version $(WC_FORMAT_VERSION) $$flags";        \
+	  fi;                                                                \
 	  if test "$(ENABLE_SASL)" != ""; then                               \
 	    flags="--enable-sasl $$flags";                                   \
 	  fi;                                                                \
@@ -673,6 +678,15 @@ check: bin @TRANSFORM_LIBTOOL_SCRIPTS@ $(TEST_DEPS) @BDB_TEST_DEPS@
 	  if test "$(SVN_BIN_DIR)" != ""; then                               \
 	    flags="--bin $(SVN_BIN_DIR) $$flags";                            \
 	  fi;                                                                \
+	  if test "$(STORE_PRISTINE)" != ""; then                            \
+	    flags="--store-pristine $(STORE_PRISTINE) $$flags";              \
+	  fi;                                                                \
+	  if test "$(VALGRIND)" != ""; then                                  \
+	    flags="--valgrind $(VALGRIND) $$flags";                          \
+	  fi;                                                                \
+	  if test "$(VALGRIND_OPTS)" != ""; then                             \
+	    flags="--valgrind-opts $(VALGRIND_OPTS) $$flags";                \
+	  fi;                                                                \
 	  LD_LIBRARY_PATH='$(auth_plugin_dirs):$(LD_LIBRARY_PATH)'           \
 	  $(PYTHON) $(top_srcdir)/build/run_tests.py                         \
 	            --config-file $(top_srcdir)/subversion/tests/tests.conf  \
@@ -686,12 +700,12 @@ check: bin @TRANSFORM_LIBTOOL_SCRIPTS@ $(TEST_DEPS) @BDB_TEST_DEPS@
 
 # First, set up Apache as documented in
 # subversion/tests/cmdline/README.
-davcheck: bin $(TEST_DEPS) @BDB_TEST_DEPS@ apache-mod
+davcheck: bin $(TEST_DEPS) @BDB_TEST_DEPS@ apache-mod mod_dontdothat
 	@$(MAKE) check BASE_URL=http://localhost
 
 # Automatically configure and run Apache httpd on a random port, and then
 # run make check.
-davautocheck: bin $(TEST_DEPS) @BDB_TEST_DEPS@ apache-mod
+davautocheck: bin $(TEST_DEPS) @BDB_TEST_DEPS@ apache-mod mod_dontdothat
 	@# Takes MODULE_PATH, USE_HTTPV1 and SVN_PATH_AUTHZ in the environment.
 	@APXS=$(APXS) MAKE=$(MAKE) $(SHELL) $(top_srcdir)/subversion/tests/cmdline/davautocheck.sh
 
@@ -791,7 +805,7 @@ doc-api: mkdir-init
 doc-javahl:
 	$(JAVADOC) -d $(abs_builddir)/doc/javadoc \
 	  -sourcepath $(top_srcdir)/subversion/bindings/javahl/src \
-	  -link http://java.sun.com/javase/6/docs/api/ \
+	  -link https://docs.oracle.com/en/java/javase/11/docs/api/ \
 	  org.tigris.subversion.javahl \
 	  org.apache.subversion.javahl \
 	  org.apache.subversion.javahl.callback \
@@ -983,20 +997,22 @@ clean-swig-pl:
 extraclean-swig-pl: clean-swig-pl
 	$(EXTRACLEAN_SWIG_PL)
 
+swig-py: autogen-swig-py
+
 $(SWIG_PY_DIR)/libsvn:
 	mkdir $(SWIG_PY_DIR)/libsvn
 
 $(SWIG_PY2_DIR)/libsvn:
 	mkdir $(SWIG_PY2_DIR)/libsvn
 
-copy-swig-py: autogen-swig-py $(SWIG_PY_DIR)/libsvn
+copy-swig-py: autogen-swig-py swig-py $(SWIG_PY_DIR)/libsvn
 	@for f in $(SWIG_PY_SRC_DIR)/*.py $(SWIG_PY_DIR)/*.py; do \
 	  ! [ -f "$$f" ] || cp -pf $$f $(SWIG_PY_DIR)/libsvn; \
 	done
 	@cd $(SWIG_PY_DIR)/libsvn;ln -sf ../.libs/*.so .
 	@touch $(SWIG_PY_DIR)/libsvn/__init__.py
 
-copy-swig-py2: autogen-swig-py2 $(SWIG_PY2_DIR)/libsvn
+copy-swig-py2: autogen-swig-py2 swig-py2 $(SWIG_PY2_DIR)/libsvn
 	@for f in $(SWIG_PY2_SRC_DIR)/*.py $(SWIG_PY2_DIR)/*.py; do \
 	  ! [ -f "$$f" ] || cp -pf $$f $(SWIG_PY2_DIR)/libsvn; \
 	done
@@ -1007,12 +1023,12 @@ swig-py: autogen-swig-py copy-swig-py
 
 swig-py2: autogen-swig-py2 copy-swig-py2
 
-check-swig-py: swig-py
+check-swig-py: swig-py copy-swig-py
 	$(TEST_SHLIB_VAR_SWIG_PY) \
 	cd $(SWIG_PY_DIR); \
 	  $(SWIG_PY_PYTHON) $(SWIG_PY_SRC_DIR)/tests/run_all.py
 
-check-swig-py2: swig-py2
+check-swig-py2: swig-py2 copy-swig-py2
 	$(TEST_SHLIB_VAR_SWIG_PY2) \
 	cd $(SWIG_PY2_DIR); \
 	  $(SWIG_PY2_PYTHON) $(SWIG_PY_SRC_DIR)/tests/run_all.py
@@ -1035,7 +1051,8 @@ clean-swig-py:
 	for d in $(SWIG_PY_SRC_DIR) $(SWIG_PY_DIR); \
 	do \
 	  test -e $$d || continue; \
-	  find $$d -name "*.pyc" -exec rm {} ';'; \
+	  find $$d '(' -name "__pycache__" -prune -o -name "*.pyc" ')' \
+	    -exec rm -rf {} ';'; \
 	done
 
 clean-swig-py2:

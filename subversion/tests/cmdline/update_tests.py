@@ -3,7 +3,7 @@
 #  update_tests.py:  testing update cases.
 #
 #  Subversion is a tool for revision control.
-#  See http://subversion.apache.org for more information.
+#  See https://subversion.apache.org for more information.
 #
 # ====================================================================
 #    Licensed to the Apache Software Foundation (ASF) under one
@@ -620,8 +620,8 @@ def update_to_resolve_text_conflicts(sbox):
 
   # "Extra" files that we expect to result from the conflicts.
   # These are expressed as list of regexps.  What a cool system!  :-)
-  extra_files = ['mu.*\.r1', 'mu.*\.r2', 'mu.*\.mine',
-                 'rho.*\.r1', 'rho.*\.r2', 'rho.*\.mine', 'rho.*\.prej']
+  extra_files = [r'mu.*\.r1', r'mu.*\.r2', r'mu.*\.mine',
+                 r'rho.*\.r1', r'rho.*\.r2', r'rho.*\.mine', r'rho.*\.prej']
 
   # Do the update and check the results in three ways.
   # All "extra" files are passed to detect_conflict_files().
@@ -1188,10 +1188,13 @@ def another_hudson_problem(sbox):
                      'D    '+G_path+'\n',
                      'Updated to revision 3.\n',
                     ]
+  expected_output = [re.escape(s) for s in expected_output]
+  if not svntest.actions.get_wc_store_pristine(wc_dir):
+    expected_output.append('Fetching text bases [.]*done\n')
 
   # Sigh, I can't get run_and_verify_update to work (but not because
   # of issue 919 as far as I can tell)
-  expected_output = svntest.verify.UnorderedOutput(expected_output)
+  expected_output = svntest.verify.UnorderedRegexListOutput(expected_output)
   svntest.actions.run_and_verify_svn(expected_output, [],
                                      'up', G_path)
 
@@ -2697,10 +2700,10 @@ def update_with_obstructing_additions(sbox):
     })
 
   # "Extra" files that we expect to result from the conflicts.
-  extra_files = ['eta\.r0', 'eta\.r2', 'eta\.mine',
-                 'kappa\.r0', 'kappa\.r2', 'kappa\.mine',
-                 'epsilon\.r0', 'epsilon\.r2', 'epsilon\.mine',
-                 'kappa.prej', 'zeta.prej', 'dir_conflicts.prej']
+  extra_files = [r'eta\.r0', r'eta\.r2', r'eta\.mine',
+                 r'kappa\.r0', r'kappa\.r2', r'kappa\.mine',
+                 r'epsilon\.r0', r'epsilon\.r2', r'epsilon\.mine',
+                 r'kappa.prej', r'zeta.prej', r'dir_conflicts.prej']
 
   # Perform forced update and check the results in three
   # ways (including props).
@@ -3713,65 +3716,74 @@ def update_accept_conflicts(sbox):
   # Setup SVN_EDITOR and SVN_MERGE for --accept={edit,launch}.
   svntest.main.use_editor('append_foo')
 
+  def run_and_verify_update_output(expected_stdout, expected_stderr, *args):
+    expected_exit = 0
+    exit_code, out, err = svntest.main.run_svn(True, *args)
+    out = [line for line in out
+           if not re.match(r'Fetching text bases [.]+done\n', line)]
+    verify.verify_outputs("Unexpected output", out, err,
+                          expected_stdout, expected_stderr)
+    verify.verify_exit_code("Unexpected return code", exit_code, expected_exit)
+
   # iota: no accept option
   # Just leave the conflicts alone, since run_and_verify_svn already uses
   # the --non-interactive option.
-  svntest.actions.run_and_verify_svn(update_output_with_conflicts(
-                                       3, iota_path_backup),
-                                     [],
-                                     'update', iota_path_backup)
+  run_and_verify_update_output(update_output_with_conflicts(
+                                 3, iota_path_backup),
+                               [],
+                               'update', iota_path_backup)
 
   # lambda: --accept=postpone
   # Just leave the conflicts alone.
-  svntest.actions.run_and_verify_svn(update_output_with_conflicts(
-                                       3, lambda_path_backup),
-                                     [],
-                                     'update', '--accept=postpone',
-                                     lambda_path_backup)
+  run_and_verify_update_output(update_output_with_conflicts(
+                                 3, lambda_path_backup),
+                               [],
+                               'update', '--accept=postpone',
+                               lambda_path_backup)
 
   # mu: --accept=base
   # Accept the pre-update base file.
-  svntest.actions.run_and_verify_svn(update_output_with_conflicts_resolved(
-                                       3, mu_path_backup),
-                                     [],
-                                     'update', '--accept=base',
-                                     mu_path_backup)
+  run_and_verify_update_output(update_output_with_conflicts_resolved(
+                                 3, mu_path_backup),
+                               [],
+                               'update', '--accept=base',
+                               mu_path_backup)
 
   # alpha: --accept=mine
   # Accept the user's working file.
-  svntest.actions.run_and_verify_svn(update_output_with_conflicts_resolved(
-                                       3, alpha_path_backup),
-                                     [],
-                                     'update', '--accept=mine-full',
-                                     alpha_path_backup)
+  run_and_verify_update_output(update_output_with_conflicts_resolved(
+                                 3, alpha_path_backup),
+                               [],
+                               'update', '--accept=mine-full',
+                               alpha_path_backup)
 
   # beta: --accept=theirs
   # Accept their file.
-  svntest.actions.run_and_verify_svn(update_output_with_conflicts_resolved(
-                                       3, beta_path_backup),
-                                     [],
-                                     'update', '--accept=theirs-full',
-                                     beta_path_backup)
+  run_and_verify_update_output(update_output_with_conflicts_resolved(
+                                 3, beta_path_backup),
+                               [],
+                               'update', '--accept=theirs-full',
+                               beta_path_backup)
 
   # pi: --accept=edit
   # Run editor and accept the edited file. The merge tool will leave
   # conflicts in place, so expect a message on stderr, but expect
   # svn to exit with an exit code of 0.
-  svntest.actions.run_and_verify_svn2(update_output_with_conflicts_resolved(
-                                        3, p_i_path_backup),
-                                      "system(.*) returned.*", 0,
-                                      'update', '--accept=edit',
-                                      '--force-interactive',
-                                      p_i_path_backup)
+  run_and_verify_update_output(update_output_with_conflicts_resolved(
+                                 3, p_i_path_backup),
+                               "system(.*) returned.*",
+                               'update', '--accept=edit',
+                               '--force-interactive',
+                               p_i_path_backup)
 
   # rho: --accept=launch
   # Run the external merge tool, it should leave conflict markers in place.
-  svntest.actions.run_and_verify_svn(update_output_with_conflicts(
-                                       3, rho_path_backup),
-                                     [],
-                                     'update', '--accept=launch',
-                                     '--force-interactive',
-                                     rho_path_backup)
+  run_and_verify_update_output(update_output_with_conflicts(
+                                 3, rho_path_backup),
+                               [],
+                               'update', '--accept=launch',
+                               '--force-interactive',
+                               rho_path_backup)
 
   # Set the expected disk contents for the test
   expected_disk = svntest.main.greek_state.copy()
@@ -3814,9 +3826,9 @@ def update_accept_conflicts(sbox):
                                              'foo\n'))
 
   # Set the expected extra files for the test
-  extra_files = ['iota.*\.r2', 'iota.*\.r3', 'iota.*\.mine',
-                 'lambda.*\.r2', 'lambda.*\.r3', 'lambda.*\.mine',
-                 'rho.*\.r2', 'rho.*\.r3', 'rho.*\.mine']
+  extra_files = [r'iota.*\.r2', r'iota.*\.r3', r'iota.*\.mine',
+                 r'lambda.*\.r2', r'lambda.*\.r3', r'lambda.*\.mine',
+                 r'rho.*\.r2', r'rho.*\.r3', r'rho.*\.mine']
 
   # Set the expected status for the test
   expected_status = svntest.actions.get_virginal_state(wc_backup, 3)
@@ -5175,14 +5187,27 @@ def skip_access_denied(sbox):
   expected_status = svntest.actions.get_virginal_state(wc_dir, 1)
   expected_status.tweak('iota', status='M ', wc_rev=2)
 
-  # And now check that update skips the path
-  # *and* status shows the path as modified.
-  svntest.actions.run_and_verify_update(wc_dir,
-                                        expected_output,
-                                        None,
-                                        expected_status,
-                                        [], False,
-                                        wc_dir, '-r', '1')
+  if svntest.actions.get_wc_store_pristine(wc_dir):
+    # And now check that update skips the path *and* status shows
+    # the path as modified.
+    svntest.actions.run_and_verify_update(wc_dir,
+                                          expected_output,
+                                          None,
+                                          expected_status,
+                                          [], False,
+                                          wc_dir, '-r', '1')
+  else:
+    # For a working copy that doesn't store local pristine contents, don't
+    # skip access violation errors when determining if a file was modified.
+    # Because if we did that (and treated such files as modified, see above),
+    # we'd also find ourselves uncontrollably fetching and removing pristines
+    # based on transient errors -- which probably is an undesired property.
+    # So we currently expect to receive an error:
+    expected_err = ".*svn: E155039: Couldn't open a working copy file*"
+    svntest.actions.run_and_verify_update(wc_dir,
+                                          None, None, None,
+                                          expected_err, False,
+                                          wc_dir, '-r', '1')
 
   f.close()
 
@@ -6840,11 +6865,13 @@ def update_delete_switched(sbox):
   svntest.actions.run_and_verify_update(wc_dir, None, None, expected_status,
                                         [], False, sbox.ospath('A'), '-r', 0)
 
-@XFail()
 def update_add_missing_local_add(sbox):
   "update adds missing local addition"
 
   sbox.build(read_only=True)
+
+  ### This used to insert an invalid workqueue item, but the issue vanished
+  ### when the update editor was changed.  Annotate this line for more info.
 
   # Note that updating 'A' to r0 doesn't reproduce this issue...
   sbox.simple_update('', revision='0')

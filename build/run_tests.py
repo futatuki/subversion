@@ -29,12 +29,13 @@
             [--url=<base-url>] [--http-library=<http-library>] [--enable-sasl]
             [--fs-type=<fs-type>] [--fsfs-packing] [--fsfs-sharding=<n>]
             [--list] [--milestone-filter=<regex>] [--mode-filter=<type>]
-            [--server-minor-version=<version>] [--http-proxy=<host>:<port>]
+            [--server-minor-version=<version>] [--wc-format-version=<version>]
+            [--http-proxy=<host>:<port>]
             [--httpd-version=<version>] [--httpd-whitelist=<version>]
             [--config-file=<file>] [--ssl-cert=<file>]
             [--exclusive-wc-locks] [--memcached-server=<url:port>]
             [--fsfs-compression=<type>] [--fsfs-dir-deltification=<true|false>]
-            [--allow-remote-http-connection]
+            [--allow-remote-http-connection] [--store-pristine=<val>]
             <abs_srcdir> <abs_builddir>
             <prog ...>
 
@@ -257,10 +258,18 @@ class TestHarness:
     if self.opts.server_minor_version is not None:
       cmdline.append('--server-minor-version=%d' %
                      self.opts.server_minor_version)
+    if self.opts.wc_format_version is not None:
+      cmdline.append('--wc-format-version=%s' % self.opts.wc_format_version)
     if self.opts.mode_filter is not None:
       cmdline.append('--mode-filter=' + self.opts.mode_filter)
     if self.opts.parallel is not None:
       cmdline.append('--parallel')
+    if self.opts.store_pristine is not None:
+      cmdline.append('--store-pristine=%s' % self.opts.store_pristine)
+    if self.opts.valgrind is not None:
+      cmdline.append('--valgrind=%s' % self.opts.valgrind)
+    if self.opts.valgrind_opts is not None:
+      cmdline.append('--valgrind-opts=%s' % self.opts.valgrind_opts)
 
     self.c_test_cmdline = cmdline
 
@@ -292,6 +301,8 @@ class TestHarness:
       cmdline.append('--fsfs-version=%d' % self.opts.fsfs_version)
     if self.opts.server_minor_version is not None:
       cmdline.append('--server-minor-version=%d' % self.opts.server_minor_version)
+    if self.opts.wc_format_version is not None:
+      cmdline.append('--wc-format-version=%s' % self.opts.wc_format_version)
     if self.opts.dump_load_cross_check is not None:
       cmdline.append('--dump-load-cross-check')
     if self.opts.enable_sasl is not None:
@@ -326,6 +337,12 @@ class TestHarness:
       cmdline.append('--fsfs-dir-deltification=%s' % self.opts.fsfs_dir_deltification)
     if self.opts.allow_remote_http_connection is not None:
       cmdline.append('--allow-remote-http-connection')
+    if self.opts.store_pristine is not None:
+      cmdline.append('--store-pristine=%s' % self.opts.store_pristine)
+    if self.opts.valgrind is not None:
+      cmdline.append('--valgrind=%s' % self.opts.valgrind)
+    if self.opts.valgrind_opts is not None:
+      cmdline.append('--valgrind-opts=%s' % self.opts.valgrind_opts)
 
     self.py_test_cmdline = cmdline
 
@@ -798,10 +815,23 @@ class TestHarness:
     # ### Even if failure==1 it could be that the test didn't run at all.
     if test_failed and test_failed != 1:
       if self.log:
-        log.write('FAIL:  %s: Unknown test failure; see tests.log.\n' % progbase)
+        log.write('FAIL:  %s: Unknown test failure (%s); see tests.log.\n'
+                  % (progbase, test_failed))
         log.flush()
       else:
-        log.write('FAIL:  %s: Unknown test failure.\n' % progbase)
+        log.write('FAIL:  %s: Unknown test failure (%s).\n'
+                  % (progbase, test_failed))
+
+  def _maybe_prepend_valgrind(self, cmdline, progbase):
+    if self.opts.valgrind:
+      if (progbase in self.opts.valgrind.split(',')
+          or 'C' in self.opts.valgrind.split(',')):
+        valgrind = [os.path.join(self.builddir, 'libtool'), '--mode=execute',
+                    'valgrind', '--quiet', '--error-exitcode=1']
+        if self.opts.valgrind_opts:
+          valgrind += self.opts.valgrind_opts.split(' ')
+        cmdline = valgrind + cmdline
+    return cmdline
 
   def _run_c_test(self, progabs, progdir, progbase, test_nums, dot_count):
     'Run a c test, escaping parameters as required.'
@@ -838,6 +868,7 @@ class TestHarness:
       self.dots_written = dots
 
     tests_completed = 0
+    cmdline = self._maybe_prepend_valgrind(cmdline, progbase)
     with Popen(cmdline, stdout=subprocess.PIPE, stderr=self.log) as prog:
       line = prog.stdout.readline()
       while line:
@@ -1003,17 +1034,19 @@ class TestHarness:
 
 
 def create_parser():
-  def set_log_level(option, opt, value, parser, level=None):
-    if level is None:
-      level = value
-    parser.values.set_log_level = getattr(logging, level, None) or int(level)
+  def set_log_level(option, opt, value, parser):
+    if value.isdigit():
+      value = int(value)
+    else:
+      value = getattr(logging, value)
+    parser.values.set_log_level = value
 
   parser = optparse.OptionParser(usage=__doc__);
 
   parser.add_option('-l', '--list', action='store_true', dest='list_tests',
                     help='Print test doc strings instead of running them')
-  parser.add_option('-v', '--verbose', action='callback',
-                    callback=set_log_level, callback_args=(logging.DEBUG, ),
+  parser.add_option('-v', '--verbose', action='store_const',
+                    dest='set_log_level', const=logging.DEBUG,
                     help='Print binary command-lines')
   parser.add_option('-c', '--cleanup', action='store_true',
                     help='Clean up after successful tests')
@@ -1035,6 +1068,8 @@ def create_parser():
                     help="Run 'svnadmin pack' automatically")
   parser.add_option('--server-minor-version', type='int', action='store',
                     help="Set the minor version for the server")
+  parser.add_option('--wc-format-version', action='store',
+                    help="Set the WC format version")
   parser.add_option('--skip-c-tests', '--skip-C-tests', action='store_true',
                     help="Run only the Python tests")
   parser.add_option('--dump-load-cross-check', action='store_true',
@@ -1080,6 +1115,12 @@ def create_parser():
                     help='Set directory deltification option (for fsfs)')
   parser.add_option('--allow-remote-http-connection', action='store_true',
                     help='Run tests that connect to remote HTTP(S) servers')
+  parser.add_option('--store-pristine', action='store', type='str',
+                    help='Set the WC pristine mode')
+  parser.add_option('--valgrind', action='store',
+                    help='programs to run under valgrind')
+  parser.add_option('--valgrind-opts', action='store',
+                    help='options to pass valgrind')
 
   parser.set_defaults(set_log_level=None)
   return parser

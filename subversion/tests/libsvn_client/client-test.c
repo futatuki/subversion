@@ -389,9 +389,12 @@ test_patch(const svn_test_opts_t *opts,
   rev.kind = svn_opt_revision_head;
   peg_rev.kind = svn_opt_revision_unspecified;
   SVN_ERR(svn_client_create_context(&ctx, pool));
-  SVN_ERR(svn_client_checkout3(NULL, repos_url, wc_path,
+  SVN_ERR(svn_client_checkout4(NULL, repos_url, wc_path,
                                &peg_rev, &rev, svn_depth_infinity,
-                               TRUE, FALSE, ctx, pool));
+                               TRUE, FALSE,
+                               opts->wc_format_version,
+                               opts->store_pristine,
+                               ctx, pool));
 
   /* Create the patch file. */
   patch_file_path = svn_dirent_join_many(
@@ -446,6 +449,7 @@ test_wc_add_scenarios(const svn_test_opts_t *opts,
   const char *ex_file_path;
   const char *ex_dir_path;
   const char *ex2_dir_path;
+  svn_boolean_t store_pristine;
 
   /* Create a filesystem and repository containing the Greek tree. */
   SVN_ERR(create_greek_repos(&repos_url, "test-wc-add-repos", opts, pool));
@@ -463,13 +467,24 @@ test_wc_add_scenarios(const svn_test_opts_t *opts,
   peg_rev.kind = svn_opt_revision_unspecified;
   SVN_ERR(svn_client_create_context(&ctx, pool));
   /* Checkout greek tree as wc_path */
-  SVN_ERR(svn_client_checkout3(NULL, repos_url, wc_path, &peg_rev, &rev,
-                               svn_depth_infinity, FALSE, FALSE, ctx, pool));
+  SVN_ERR(svn_client_checkout4(NULL, repos_url, wc_path, &peg_rev, &rev,
+                               svn_depth_infinity, FALSE, FALSE,
+                               opts->wc_format_version,
+                               opts->store_pristine,
+                               ctx, pool));
+
+  SVN_ERR(svn_wc__get_settings(NULL, &store_pristine, ctx->wc_ctx,
+                               wc_path, pool));
+  if (!store_pristine)
+    return svn_error_create(SVN_ERR_TEST_SKIPPED, NULL,
+                            "Test assumes a working copy with pristine");
 
   /* Now checkout again as wc_path/NEW */
   new_dir_path = svn_dirent_join(wc_path, "NEW", pool);
-  SVN_ERR(svn_client_checkout3(NULL, repos_url, new_dir_path, &peg_rev, &rev,
+  SVN_ERR(svn_client_checkout4(NULL, repos_url, new_dir_path, &peg_rev, &rev,
                                svn_depth_infinity, FALSE, FALSE,
+                               opts->wc_format_version,
+                               opts->store_pristine,
                                ctx, pool));
 
   ex_dir_path = svn_dirent_join(wc_path, "NEW_add", pool);
@@ -627,9 +642,12 @@ test_16k_add(const svn_test_opts_t *opts,
   rev.kind = svn_opt_revision_head;
   peg_rev.kind = svn_opt_revision_unspecified;
   SVN_ERR(svn_client_create_context(&ctx, pool));
-  SVN_ERR(svn_client_checkout3(NULL, repos_url, wc_path,
+  SVN_ERR(svn_client_checkout4(NULL, repos_url, wc_path,
                                &peg_rev, &rev, svn_depth_infinity,
-                               TRUE, FALSE, ctx, pool));
+                               TRUE, FALSE,
+                               opts->wc_format_version,
+                               opts->store_pristine,
+                               ctx, pool));
 
   for (i = 0; i < 16384; i++)
     {
@@ -757,8 +775,12 @@ test_foreign_repos_copy(const svn_test_opts_t *opts,
   peg_rev.kind = svn_opt_revision_unspecified;
   SVN_ERR(svn_client_create_context(&ctx, pool));
   /* Checkout greek tree as wc_path */
-  SVN_ERR(svn_client_checkout3(NULL, repos_url, wc_path, &peg_rev, &rev,
-                               svn_depth_infinity, FALSE, FALSE, ctx, pool));
+  SVN_ERR(svn_client_checkout4(NULL, repos_url, wc_path, &peg_rev, &rev,
+                               svn_depth_infinity,
+                               FALSE, FALSE,
+                               opts->wc_format_version,
+                               opts->store_pristine,
+                               ctx, pool));
 
   SVN_ERR(svn_client__ra_session_from_path2(&ra_session, &loc,
                                             repos2_url, NULL, &peg_rev, &rev,
@@ -822,12 +844,14 @@ test_suggest_mergesources(const svn_test_opts_t *opts,
   SVN_ERR(svn_io_remove_dir2(wc_path, TRUE, NULL, NULL, pool));
 
   head_rev.kind = svn_opt_revision_head;
-  SVN_ERR(svn_client_checkout3(NULL,
+  SVN_ERR(svn_client_checkout4(NULL,
                                svn_path_url_add_component2(repos_url, "AA", pool),
                                wc_path,
                                &head_rev, &head_rev, svn_depth_empty,
-                               FALSE, FALSE, ctx, pool));
-
+                               FALSE, FALSE,
+                               opts->wc_format_version,
+                               opts->store_pristine,
+                               ctx, pool));
 
   SVN_ERR(svn_client_suggest_merge_sources(&results,
                                            wc_path,
@@ -970,10 +994,13 @@ test_remote_only_status(const svn_test_opts_t *opts, apr_pool_t *pool)
 
   rev.kind = svn_opt_revision_number;
   rev.value.number = 1;
-  SVN_ERR(svn_client_checkout3(NULL,
+  SVN_ERR(svn_client_checkout4(NULL,
                                apr_pstrcat(pool, repos_url, "/A", SVN_VA_NULL),
                                wc_path, &rev, &rev, svn_depth_immediates,
-                               FALSE, FALSE, ctx, pool));
+                               FALSE, FALSE,
+                               opts->wc_format_version,
+                               opts->store_pristine,
+                               ctx, pool));
 
   /* Add a local file; this is a double-check to make sure that
      remote-only status ignores local changes. */

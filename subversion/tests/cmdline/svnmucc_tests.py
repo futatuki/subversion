@@ -3,7 +3,7 @@
 #  svnmucc_tests.py: tests of svnmucc
 #
 #  Subversion is a tool for revision control.
-#  See http://subversion.apache.org for more information.
+#  See https://subversion.apache.org for more information.
 #
 # ====================================================================
 #    Licensed to the Apache Software Foundation (ASF) under one
@@ -49,7 +49,7 @@ def reject_bogus_mergeinfo(sbox):
                                          sbox.repo_url + '/A')
 
 _svnmucc_re = re.compile(b'^(r[0-9]+) committed by jrandom at (.*)$')
-_log_re = re.compile('^   ([ADRM] /[^\(]+($| \(from .*:[0-9]+\)$))')
+_log_re = re.compile(r'^   ([ADRM] /[^\(]+($| \(from .*:[0-9]+\)$))')
 _err_re = re.compile('^svnmucc: (.*)$')
 
 def test_svnmucc(repo_url, expected_path_changes, *varargs):
