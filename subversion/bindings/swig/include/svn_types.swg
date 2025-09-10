@@ -656,7 +656,44 @@ svn_ ## TYPE ## _swig_rb_closed(VALUE self)
 %typemap(in, noblock=1) apr_pool_t * {
   /* Verify that the user supplied a valid pool */
   if ($input != Py_None && $input != _global_py_pool) {
-    SWIG_Python_TypeError(SWIG_TypePrettyName($descriptor), $input);
+    int raised = FALSE;
+#if defined(SWIG_COBJECT_TYPES)
+    if (SwigPyObject_Check($input) {
+      const char *otype = (const char *) SwigPyObject_GetDesc($input);
+      if (otype) {
+        PyErr_Format(PyExc_TypeError,
+                     "a 'apr_pool_t *' is expected, 'SwigPyObject(%s)' "
+                     "is received",
+                     otype);
+        raised = TRUE;
+      }
+    }
+#endif
+    if (!raised) {
+      const char *odesc = ($input ? $input->ob_type->tp_name : NULL);
+      if (odesc) {
+        PyObject *valstr = PyObject_Str($input);
+        if (valstr) {
+          const char *cvalstr = PyStr_AsString(valstr);
+          if (cvalstr) {
+            PyErr_Format(PyExc_TypeError,
+                         "a 'apr_pool_t *' is expected, '%s(%s)' is received",
+                         odesc, cvalstr);
+            raised = TRUE;
+          }
+        }
+        if (!raised) {
+          PyErr_Format(PyExc_TypeError,
+                       "a 'apr_pool_t *' is expected, '%s' is received",
+                       odesc);
+          raised = TRUE;
+        }
+        Py_XDECREF(valstr);
+      }
+    }
+    if (!raised) {
+      PyErr_Format(PyExc_TypeError, "a 'apr_pool_t *' is expected");
+    }
     SWIG_arg_fail($svn_argnum);
     SWIG_fail;
   }
